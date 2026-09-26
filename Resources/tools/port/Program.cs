@@ -27,11 +27,22 @@ switch (args[0])
     case "il": Dump.Il(args[1], args[2]); break;
     case "api": Dump.Api(args[1]); break;
     case "users": Dump.Users(args[1], args[2]); break;
-    case "port": RunPort(args[1], args[2], args[3], args.Length > 4 ? args[4] : null); break;
+    case "port":
+        {
+            // --windows: the target is the Windows build of the game (keep its Windows P/Invokes)
+            var pa = args.Where(a => a != "--windows").ToArray();
+            RunPort(pa[1], pa[2], pa[3], pa.Length > 4 ? pa[4] : null, args.Contains("--windows"));
+            break;
+        }
+    case "hunks": Hunks.Extract(args[1], args[2]); break;
+    case "seeds": Hunks.Seeds(args[1], args[2]); break;
+    case "speech": Enhance.RetargetSpeech(args[1], args[2]); break;
+    case "expose": Enhance.Expose(args[1], args[2]); break;
+    case "hook": Environment.Exit(Enhance.Hook(args[1], args[2], args[3], args[4], args.Contains("--hsa-menus")) ? 0 : 1); break;
     default: Console.WriteLine("unknown command"); break;
 }
 
-static void RunPort(string wPath, string mPath, string outPath, string? refDir)
+static void RunPort(string wPath, string mPath, string outPath, string? refDir, bool windows)
 {
     var macDir = refDir ?? Path.GetDirectoryName(Path.GetFullPath(mPath))!;
     var mRes = new DefaultAssemblyResolver(); mRes.AddSearchDirectory(macDir);
@@ -53,7 +64,7 @@ static void RunPort(string wPath, string mPath, string outPath, string? refDir)
     File.WriteAllLines("selected_methods.txt", sel.Select(x => x.FullName).Concat(ef.usesAddedMembers.Select(x => x.FullName)).Distinct());
     File.WriteAllLines("edit_reasons.txt", p.reasons.Select(kv => $"{kv.Key.FullName}\t{kv.Value}"));
     p.CreateShells(); p.Fill();
-    Shims.Apply(M, p.Touched().ToList(), log);
+    Shims.Apply(M, p.Touched().ToList(), log, windows);
     LogMerge.Apply(W, M, p.PulledGetterNames("Log"), log);
     Console.Write(log.ToString());
     foreach (var ar in M.AssemblyReferences) Console.WriteLine($"asmref {ar.FullName}");
@@ -82,6 +93,8 @@ static void RunPort(string wPath, string mPath, string outPath, string? refDir)
         foreach (var v in m.Body.Variables) Check(v.VariableType);
     }
     foreach (var t in p.TouchedTypes()) { if (t.BaseType != null) Check(t.BaseType); foreach (var f in t.Fields) Check(f.FieldType); }
+    // the mod's own assemblies (speech, compat) are not in the game folder yet; `port check` looks at them later
+    foreach (var own in missing.Keys.Where(k => k == "ASSEMBLY TolkDotNet" || k == "ASSEMBLY HSACompat" || k == "ASSEMBLY HSAPrism").ToList()) missing.Remove(own);
     File.WriteAllLines("missing_refs.txt", missing.Select(kv => $"{kv.Value}\t{kv.Key}"));
     Console.WriteLine($"missing external refs: {missing.Count} (see missing_refs.txt)");
     M.Write(outPath);

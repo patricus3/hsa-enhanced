@@ -6,7 +6,7 @@ using Mono.Cecil.Cil;
 // Assembly-CSharp itself), written in IL on top of members the Mac BCL keeps.
 static class Shims
 {
-    public static void Apply(ModuleDefinition M, IEnumerable<MethodDefinition> touched, TextWriter log)
+    public static void Apply(ModuleDefinition M, IEnumerable<MethodDefinition> touched, TextWriter log, bool windows = false)
     {
         var corlib = M.AssemblyResolver.Resolve((AssemblyNameReference)M.TypeSystem.CoreLibrary).MainModule;
         TypeDefinition CT(string n) => corlib.GetType(n) ?? throw new Exception("corlib lacks " + n);
@@ -84,7 +84,8 @@ static class Shims
         }
         // P/Invokes into Windows system DLLs came along with Windows-only game code
         // (e.g. HearthstoneApplication.SetWindowText via user32.dll). Turn them into
-        // managed no-ops returning default values.
+        // managed no-ops returning default values. On Windows they are real and stay.
+        if (windows) { log.WriteLine($"shims: {n} references redirected to HsaCompat, Windows P/Invokes kept (Windows build)"); return; }
         var winDlls = new[] { "user32", "kernel32", "gdi32", "advapi32", "shell32", "ole32", "dwmapi", "winmm", "ntdll", "shcore", "psapi", "version", "setupapi", "hid", "xinput" };
         int nulled = 0;
         foreach (var m in touched.Where(m => m.HasPInvokeInfo).ToList())

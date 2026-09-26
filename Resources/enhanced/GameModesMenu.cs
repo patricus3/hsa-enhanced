@@ -1,0 +1,64 @@
+using System;
+using Accessibility;
+using Hearthstone.DataModels;
+
+namespace HSAEnhanced
+{
+    // The game modes screen: one option per mode button the game shows, in the game's order
+    // (HSA lists only Solo Adventures and Tavern Brawl).
+    static class GameModesMenu
+    {
+        internal static AccessibleMenu Build(AccessibleComponent scene, GameModeSceneDataModel model, AccessibleMenu hsaMenu)
+        {
+            if (!Engine.Enabled || model == null || model.GameModeButtons == null || model.GameModeButtons.Count == 0) return hsaMenu;
+            var menu = new AccessibleMenu(scene, LocalizationUtils.Get(LocalizationKey.GLOBAL_CHOOSE_MODE), ClickBack);
+            int last = -1;
+            foreach (var button in model.GameModeButtons)
+            {
+                var b = button;
+                if (b == null) continue;
+                var name = Str.Clean(b.Name);
+                if (name.Length == 0) continue;
+                menu.AddOption(Str.Join(name, Flags(b)), () => Choose(scene, b));
+                if (b.GameModeRecordId == model.LastSelectedGameModeRecordId) last = menu.GetNumItems() - 1;
+            }
+            menu.AddOption(LocalizedText.SCREEN_GO_BACK, ClickBack);
+            if (last >= 0) menu.SetIndex(last);
+            return menu;
+        }
+
+        static string Flags(GameModeButtonDataModel b)
+        {
+            return Str.Join(
+                b.IsNew ? Str.T("ACCESSIBILITY_ENH_NEW", "new") : null,
+                b.IsEarlyAccess ? Str.T("ACCESSIBILITY_ENH_EARLY_ACCESS", "early access") : null,
+                b.IsBeta ? Str.T("ACCESSIBILITY_ENH_BETA", "beta") : null,
+                b.IsDownloading ? Str.T("ACCESSIBILITY_ENH_DOWNLOADING", "downloading") :
+                    b.IsDownloadRequired ? Str.T("ACCESSIBILITY_ENH_DOWNLOAD_REQUIRED", "download required") : null);
+        }
+
+        static void Choose(AccessibleComponent scene, GameModeButtonDataModel b)
+        {
+            try
+            {
+                var display = GameModeDisplay.Get();
+                display.SelectMode(b);
+                string reason;
+                if (!display.CanEnterMode(out reason, out _))
+                {
+                    AccessibilityMgr.Output(scene, string.IsNullOrEmpty(reason) ? Str.Clean(b.Description) : Str.Clean(reason));
+                    return;
+                }
+                var play = Ref.Get<PegUIElement>(display, "m_playButton");
+                if (play != null) play.TriggerRelease();
+            }
+            catch (Exception e) { Log.Error(e); }
+        }
+
+        static void ClickBack()
+        {
+            var back = Ref.Get<PegUIElement>(GameModeDisplay.Get(), "m_backButton");
+            if (back != null) back.TriggerRelease();
+        }
+    }
+}

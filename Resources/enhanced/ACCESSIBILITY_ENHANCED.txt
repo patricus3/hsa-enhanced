@@ -1,0 +1,23 @@
+ACCESSIBILITY_ENH_NEW	new	game mode flag
+ACCESSIBILITY_ENH_EARLY_ACCESS	early access	game mode flag
+ACCESSIBILITY_ENH_BETA	beta	game mode flag
+ACCESSIBILITY_ENH_DOWNLOADING	downloading	game mode flag
+ACCESSIBILITY_ENH_DOWNLOAD_REQUIRED	download required	game mode flag
+ACCESSIBILITY_ENH_LOCKED	locked	
+ACCESSIBILITY_ENH_BM_PRICE	{0} Bloodstones	0=amount of Black Market currency
+ACCESSIBILITY_ENH_BM_BALANCE	You have {0} Bloodstones	0=amount
+ACCESSIBILITY_ENH_BM_NOT_REVEALED	not revealed yet	Black Market item
+ACCESSIBILITY_ENH_BM_CANNOT_OPEN	This item cannot be opened right now	
+ACCESSIBILITY_ENH_BM_TOTAL_PRICE	Price: {0}	0=price with currency
+ACCESSIBILITY_ENH_BM_QUANTITY	Quantity: {0}	
+ACCESSIBILITY_ENH_BM_MORE	Increase quantity	
+ACCESSIBILITY_ENH_BM_LESS	Decrease quantity	
+ACCESSIBILITY_ENH_BM_BUY	Buy for {0}	0=price with currency
+ACCESSIBILITY_ENH_UNAVAILABLE	unavailable	button the game has disabled
+ACCESSIBILITY_ENH_SCREEN_MENU	Screen menu	fallback menu for screens without their own
+ACCESSIBILITY_ENH_NO_BACK	There is nothing to go back to here	
+ACCESSIBILITY_ENH_NOT_OWNED	not owned	an adventure wing that has not been bought
+ACCESSIBILITY_ENH_COMPLETED	completed	an adventure chapter or mission already won
+ACCESSIBILITY_ENH_LD_DRAW	Draw for {0}	0=price; a lucky draw pull
+ACCESSIBILITY_ENH_LD_OWNED_COUNT	{0} of {1} rewards owned	
+ACCESSIBILITY_ENH_OWNED	owned	

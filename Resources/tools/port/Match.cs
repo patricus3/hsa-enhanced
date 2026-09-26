@@ -8,7 +8,29 @@ using Mono.Cecil.Cil;
 // W's body than in M's, and each one it removes less often.
 static class Match
 {
-    record Hunk(string cls, string id, string header, Dictionary<string, int> gained, Dictionary<string, int> lost, string text);
+    record Hunk(string cls, string id, string header, Dictionary<string, int> gained, Dictionary<string, int> lost, string text, List<string>? touched = null, string? enclosing = null);
+
+    // tokens go on one line of the detail file (string literals may hold line breaks and tabs)
+    static string OneLine(string t) => t.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+
+    // HSA's methods named like the one the hunk sits in, whose build differs from the game's
+    static List<MethodDefinition> ByEnclosing(Hunk h, List<TypeDefinition> wts, List<TypeDefinition> mts)
+    {
+        var found = new List<MethodDefinition>();
+        if (h.enclosing == null) return found;
+        var mByName = new Dictionary<string, MethodDefinition>();
+        foreach (var mt in mts) foreach (var me in mt.Methods) mByName.TryAdd(NormCg(me.FullName), me);
+        foreach (var wt in wts.Where(t => !Port.IsCompilerGenerated(t)))
+            foreach (var wm in wt.Methods.Where(m => m.Name == h.enclosing || m.Name == "get_" + h.enclosing || m.Name == "set_" + h.enclosing))
+                if (mByName.TryGetValue(NormCg(wm.FullName), out var mm) && Shape(wm) != Shape(mm)) found.Add(wm);
+        return found;
+    }
+
+    // Opcodes and operands, for telling whether HSA's compiled method differs from the game's
+    static string Shape(MethodDefinition m) => !m.HasBody ? "" : string.Join(";", m.Body.Instructions.Select(i => i.OpCode.Code + " " + NormCg(i.Operand switch
+    {
+        MemberReference r => r.Name, Instruction => "", Instruction[] => "", VariableDefinition => "", ParameterDefinition => "", _ => i.Operand?.ToString() ?? ""
+    })));
 
     static readonly Regex CgNum = new(@"(>[a-z]__)\d+(_\d+)?");
     static string NormCg(string s) => CgNum.Replace(s, "$1N");
@@ -88,7 +110,35 @@ static class Match
                 foreach (var f in wt.Fields)
                     if (gained.ContainsKey(f.Name) && !mt.Fields.Any(x => x.Name == f.Name)) { added.Add("F " + f.FullName); declared = true; }
             }
-            if (gained.Count == 0 && lost.Count == 0) { if (!declared) unmatched.Add($"NOTOKENS {h.id} {h.header}\n{h.text}"); continue; }
+            if (gained.Count == 0 && lost.Count == 0 && h.touched is { Count: > 0 })
+            {
+                // operator-only change (a?.b, ??, !): the methods using every name on the changed
+                // lines whose HSA build differs from the game's
+                var names = h.touched.Where(cu.Contains).ToList();
+                var ops = new List<MethodDefinition>();
+                if (names.Count > 0)
+                {
+                    var mByName = new Dictionary<string, MethodDefinition>();
+                    foreach (var mt in mts) foreach (var me in mt.Methods) mByName.TryAdd(NormCg(me.FullName), me);
+                    foreach (var wt in wts) foreach (var wm in wt.Methods)
+                    {
+                        if (!mByName.TryGetValue(NormCg(wm.FullName), out var mm)) continue;
+                        var cw = Count(wm);
+                        if (names.All(n => cw.ContainsKey(n)) && Shape(wm) != Shape(mm)) ops.Add(wm);
+                    }
+                }
+                if (ops.Count == 0) ops = ByEnclosing(h, wts, mts);
+                if (ops.Count == 0) { if (!declared) unmatched.Add($"NOTOKENS {h.id} {h.header}\n{h.text}"); continue; }
+                foreach (var x in ops) { matched.Add(x.FullName); detail.Add($"{x.FullName}\t{h.id}\tgained=[] lost=[]"); }
+                continue;
+            }
+            if (gained.Count == 0 && lost.Count == 0)
+            {
+                var enc = ByEnclosing(h, wts, mts);
+                if (enc.Count > 0) { foreach (var x in enc) { matched.Add(x.FullName); detail.Add($"{x.FullName}\t{h.id}\tgained=[] lost=[]"); } continue; }
+                if (!declared) unmatched.Add($"NOTOKENS {h.id} {h.header}\n{h.text}");
+                continue;
+            }
             // pair methods W <-> M
             var mIndex = new Dictionary<string, List<MethodDefinition>>();
             foreach (var mt in mts) foreach (var me in mt.Methods) { var k = NormCg(me.FullName); if (!mIndex.TryGetValue(k, out var l)) mIndex[k] = l = new(); l.Add(me); }
@@ -102,8 +152,11 @@ static class Match
                        && lost.All(kv => cm.GetValueOrDefault(kv.Key) > cw.GetValueOrDefault(kv.Key));
                 if (ok) hits.Add(wm);
             }
+            // no method carries the names (e.g. the compiler dropped code after an early return):
+            // the method the hunk sits in
+            if (hits.Count == 0) hits.AddRange(ByEnclosing(h, wts, mts));
             if (hits.Count == 0) { if (!declared) unmatched.Add($"NOMATCH {h.id} {h.header} gained=[{string.Join(",", gained.Keys)}] lost=[{string.Join(",", lost.Keys)}]\n{h.text}"); }
-            else foreach (var x in hits) { matched.Add(x.FullName); detail.Add($"{x.FullName}\t{h.id}\tgained=[{string.Join(",", gained.Keys)}] lost=[{string.Join(",", lost.Keys)}]"); }
+            else foreach (var x in hits) { matched.Add(x.FullName); detail.Add($"{x.FullName}\t{h.id}\tgained=[{string.Join(",", gained.Keys.Select(OneLine))}] lost=[{string.Join(",", lost.Keys.Select(OneLine))}]"); }
         }
         // coverage: for hunks without a single matching method, check token by
         // token that some already-selected method of the class carries the change

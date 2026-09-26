@@ -327,7 +327,8 @@ class Port
             }
             else
             {
-                if (mTypeByName.ContainsKey(t.FullName)) problems.Add($"name clash {t.FullName}");
+                // (compiler-generated types come in renamed, e.g. <PrivateImplementationDetails>_hsa)
+                if (mTypeByName.ContainsKey(mt.FullName)) problems.Add($"name clash {mt.FullName}");
                 M.Types.Add(mt);
             }
         }

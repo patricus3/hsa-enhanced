@@ -1,0 +1,236 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using Accessibility;
+using Hearthstone.UI;
+using UnityEngine;
+
+namespace HSAEnhanced
+{
+    // Any screen or popup Hearthstone Access does not know: a menu of every button the game
+    // shows on it, read from the game objects, with a way back. It steps aside as soon as HSA
+    // (or the Black Market screen) takes over.
+    class FallbackWatcher : MonoBehaviour
+    {
+        static FallbackWatcher s_instance;
+        static object s_focusedScreen;      // the screen HSA last gave focus to
+        static float s_focusedAt;
+        static bool s_spokeSinceFocus;
+
+        internal static void ScreenFocused()
+        {
+            s_focusedScreen = Ref.Field(typeof(AccessibilityMgr), "s_curScreen")?.GetValue(null);
+            s_focusedAt = Time.unscaledTime;
+            s_spokeSinceFocus = false;
+        }
+
+        internal static void Spoke() { s_spokeSinceFocus = true; }
+
+        // Got focus and said nothing (HSA's OnGainedFocus did not read anything)
+        static bool Silent(object screen)
+        {
+            return screen != null && screen == s_focusedScreen && !s_spokeSinceFocus && Time.unscaledTime - s_focusedAt > 1.5f;
+        }
+        FallbackUI m_ui;
+        string m_candidate;     // target seen on the previous check
+        string m_emptyKey;      // target that had no buttons, and until when not to look again
+        float m_emptyUntil;
+        float m_next;
+
+        // coroutines of ours (FallbackWatcher is our MonoBehaviour that lives as long as HSA)
+        internal static void Run(System.Collections.IEnumerator routine)
+        {
+            if (s_instance != null) s_instance.StartCoroutine(routine);
+        }
+
+        internal static void Ensure(GameObject host)
+        {
+            if (s_instance != null || host == null) return;
+            s_instance = host.AddComponent<FallbackWatcher>();
+        }
+
+        void Update()
+        {
+            if (Time.unscaledTime < m_next) return;
+            m_next = Time.unscaledTime + 0.5f;
+            try
+            {
+                MenuAugment.Tick();
+                Back.Tick();
+                Check();
+            }
+            catch (Exception e) { Log.Error(e); }
+        }
+
+        void Check()
+        {
+            GameObject root; string key; bool popup;
+            FindTarget(out root, out key, out popup);
+            if (key == null) { m_candidate = null; Hide(); return; }
+
+            // the same target on two checks in a row: HSA had its chance to take it
+            if (key != m_candidate) { m_candidate = key; return; }
+
+            if (m_ui != null && m_ui.Key == key) { m_ui.Refresh(false); return; }
+            // this target had nothing to offer a moment ago: look again only every 2 seconds
+            if (key == m_emptyKey && Time.unscaledTime < m_emptyUntil) return;
+            Hide();
+            m_ui = new FallbackUI(key, root, popup);
+            if (!m_ui.HasButtons) { m_ui = null; m_emptyKey = key; m_emptyUntil = Time.unscaledTime + 2f; return; }   // nothing on screen to offer (loading)
+            AccessibilityMgr.ShowUI(m_ui);
+            m_ui.Start();
+        }
+
+        void Hide()
+        {
+            if (m_ui == null) return;
+            var ui = m_ui;
+            m_ui = null;
+            AccessibilityMgr.HideUI(ui);
+        }
+
+        static readonly Type Mgr = typeof(AccessibilityMgr);
+
+        // What needs a fallback menu now: an unhandled popup or dialog, or a screen HSA has
+        // no screen for. null when HSA handles everything.
+        void FindTarget(out GameObject root, out string key, out bool popup)
+        {
+            root = null; key = null; popup = false;
+            if (!AccessibilityMgr.IsAccessibilityEnabled() || GameState.Get() != null) return;
+            var scenes = SceneMgr.Get();
+            if (scenes == null || scenes.IsTransitioning() || !scenes.IsSceneLoaded()) return;
+            var mode = scenes.GetMode();
+            if (mode == SceneMgr.Mode.STARTUP || mode == SceneMgr.Mode.GAMEPLAY || mode == SceneMgr.Mode.FATAL_ERROR) return;
+
+            // HSA busy with something of its own: a UI (other than ours), a forced key, a notification
+            var uis = Ref.Field(Mgr, "s_curUIs")?.GetValue(null) as IList;
+            if (uis != null) foreach (var u in uis) if (u != m_ui) return;
+            if (Ref.Field(Mgr, "s_forcedKey")?.GetValue(null) != null) return;
+            if (Ref.Field(Mgr, "s_curNotificationDismissButton")?.GetValue(null) as UnityEngine.Object) return;
+
+            // topmost popup / dialog nobody made accessible
+            var dialog = Ref.Get<DialogBase>(DialogManager.Get(), "m_currentDialog");
+            if (dialog != null && dialog.gameObject.activeInHierarchy && !Handled(dialog.gameObject)) { root = dialog.gameObject; popup = true; }
+            var ctx = UIContext.GetRoot();
+            if (root == null && ctx != null && ctx.ShowingPopups())
+            {
+                var latest = ctx.GetLatestPopup();
+                var go = latest == null ? null : latest.PopupInstance;
+                if (go != null && go.activeInHierarchy && !Handled(go)) { root = go; popup = true; }
+            }
+            if (root != null) { key = "popup:" + root.GetInstanceID(); return; }
+
+            // a screen with no HSA screen (or HSA's hub screen left over after leaving the hub)
+            var screen = Ref.Field(Mgr, "s_curScreen")?.GetValue(null);
+            if (BlackMarketWatcher.Active > 0 || LuckyDrawWatcher.Active > 0) return;
+            if (screen == null || (screen is AccessibleHub && mode != SceneMgr.Mode.HUB) || Inert(screen as AccessibleScreen) || Silent(screen))
+                key = "screen:" + mode + ":" + (screen == null ? "" : screen.GetType().Name);
+        }
+
+        // An HSA screen that is set but handles nothing here: it has no help to give (e.g. the
+        // adventure screen on sub-screens it does not know stays "loading" and ignores all keys)
+        static bool Inert(AccessibleScreen screen)
+        {
+            if (screen == null) return false;
+            try { return string.IsNullOrEmpty(screen.GetHelp()); }
+            catch { return false; }
+        }
+
+        // Made accessible already: an HSA UI/screen component in or above it, or our Black Market popup
+        static bool Handled(GameObject go)
+        {
+            foreach (var c in go.GetComponentsInParent<Component>(true))
+                if (c is AccessibleUI || c is AccessibleScreen) return true;
+            foreach (var c in go.GetComponentsInChildren<Component>(true))
+                if (c is AccessibleUI || c is AccessibleScreen || c is BlackMarketItemPopup) return true;
+            // pages our own screens read (the Black Market page, the lucky draw)
+            if (BlackMarketWatcher.Active > 0 && go.GetComponentInChildren<BlackMarketMainPage>(true) != null) return true;
+            if (LuckyDrawWatcher.Active > 0 && go.GetComponentInChildren<LuckyDrawWidget>(true) != null) return true;
+            return false;
+        }
+    }
+
+    class FallbackUI : AccessibleUI
+    {
+        internal readonly string Key;
+        readonly GameObject m_root;     // popup/dialog, or null for the whole screen
+        readonly bool m_popup;
+        AccessibleMenu m_menu;
+
+        internal FallbackUI(string key, GameObject root, bool popup)
+        {
+            Key = key; m_root = root; m_popup = popup;
+            var title = popup ? PopupTitle(root) : (Book.Title() ?? Str.T("ACCESSIBILITY_ENH_SCREEN_MENU", "Screen menu"));
+            m_menu = new AccessibleMenu(this, title, GoBack);
+            Refresh(true);
+        }
+
+        internal bool HasButtons { get { return m_menu.GetNumItems() > 1; } }   // more than Go back
+
+        internal void Start() { m_menu.StartReading(); }
+
+        internal void Refresh(bool immediate)
+        {
+            var buttons = Buttons();
+            // nothing to click on a popup: a click on it usually continues
+            if (buttons.Count == 0 && m_popup && m_root != null)
+            {
+                var root = m_root;
+                buttons.Add(new GameButton { Target = root.transform, Label = Str.Game("GLOBAL_CONTINUE") ?? "Continue", Click = () => AccessibleInputMgr.Click(root) });   // no widget button on it: the virtual mouse
+            }
+            ExtraOptions.Of(m_menu).Update(m_menu, buttons, () => -1, immediate);
+            if (MenuEdit.IndexOfText(m_menu, LocalizedText.SCREEN_GO_BACK) < 0)
+                m_menu.AddOption(LocalizedText.SCREEN_GO_BACK, GoBack);
+            else
+            {
+                // keep Back last
+                var list = MenuEdit.List(m_menu);
+                var i = MenuEdit.IndexOfText(m_menu, LocalizedText.SCREEN_GO_BACK);
+                if (list != null && i != list.Count - 1) { var o = list[i]; list.RemoveAt(i); list.Add(o); }
+            }
+        }
+
+        // what is shown, without Back / Cancel / Close buttons: Go back uses them if the game's
+        // own back navigation does nothing
+        List<GameButton> Buttons()
+        {
+            var found = m_root != null ? Ui.ClickablesUnder(m_root, null) : Ui.ScreenButtons();
+            found.RemoveAll(b => Labels.IsBack(b.Label));
+            // an adventure book page: its chapters or missions from the game's data come first
+            var book = m_root == null ? Book.Buttons() : null;
+            if (book != null && book.Count > 0)
+            {
+                var labels = new List<string>();
+                foreach (var b in book) labels.Add(b.Label);
+                foreach (var b in found) if (!Labels.SimilarToAny(labels, b.Label)) { labels.Add(b.Label); book.Add(b); }
+                return book;
+            }
+            return found;
+        }
+
+        static bool Under(Transform t, GameObject root)
+        {
+            if (root == null) return false;
+            for (; t != null; t = t.parent) if (t.gameObject == root) return true;
+            return false;
+        }
+
+        static string PopupTitle(GameObject root)
+        {
+            // the first text on the popup that is not on a button, usually its header
+            foreach (var ut in root.GetComponentsInChildren<UberText>(false))
+            {
+                if (ut.GetComponentInParent<PegUIElement>() != null || ut.GetComponentInParent<Clickable>() != null) continue;
+                var s = Str.Clean(ut.Text);
+                if (s.Length > 0) return Str.Join(LocalizedText.UI_POPUP, s);
+            }
+            return LocalizedText.UI_POPUP;
+        }
+
+        void GoBack() { Back.Go(m_menu, m_root); }
+
+        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
+
+        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
+    }
+}

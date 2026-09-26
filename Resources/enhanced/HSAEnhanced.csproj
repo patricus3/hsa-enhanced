@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Additions to Hearthstone Access (Black Market, menus built from what the game shows).
+       Built by rebuild.sh / rebuild.ps1 against the game's own assemblies and the ported
+       Assembly-CSharp (after `port expose`):
+         dotnet build -p:GameManaged=<game Managed dir> -p:HsaAssembly=<ported Assembly-CSharp.dll> -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AssemblyName>HSAEnhanced</AssemblyName>
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
+    <FileVersion>0.0.0.0</FileVersion>
+    <LangVersion>7.3</LangVersion>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- compile against the game's own (stripped) class library, so only members the game ships can be used -->
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoStdLib>true</NoStdLib>
+    <NoCompilerStandardLib>true</NoCompilerStandardLib>
+    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
+    <NoWarn>$(NoWarn);CS0618;MSB3277;MSB3270</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(GameManaged)\*.dll"
+               Exclude="$(GameManaged)\Assembly-CSharp.dll;$(GameManaged)\HSAEnhanced.dll;$(GameManaged)\HSACompat.dll;$(GameManaged)\TolkDotNet.dll"
+               Private="false" />
+    <Reference Include="$(HsaAssembly)" Private="false" />
+  </ItemGroup>
+  <!-- The SDK still adds mscorlib & co. from the .NET Framework reference pack; compile
+       against the game's own assemblies only. -->
+  <Target Name="UseOnlyGameAssemblies" AfterTargets="ResolveAssemblyReferences" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_GameDir>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(GameManaged)'))))</_GameDir>
+      <_HsaFull>$([System.IO.Path]::GetFullPath('$(HsaAssembly)'))</_HsaFull>
+    </PropertyGroup>
+    <ItemGroup>
+      <_NotFromGame Include="@(ReferencePath)" Condition="!$([System.String]::Copy('%(FullPath)').StartsWith('$(_GameDir)')) And '%(FullPath)' != '$(_HsaFull)'" />
+      <ReferencePath Remove="@(_NotFromGame)" />
+      <_GameCopy Include="@(_NotFromGame->'$(_GameDir)%(Filename)%(Extension)')" />
+      <ReferencePath Include="@(_GameCopy)" Condition="Exists('%(FullPath)')" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_GameDir)/mscorlib.dll')" Text="mscorlib.dll not found in $(_GameDir)" />
+  </Target>
+</Project>

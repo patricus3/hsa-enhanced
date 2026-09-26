@@ -1,11 +1,10 @@
 # build output
 bin/
 obj/
-*.dylib
-!Resources/voiceover/prism/libprism.dylib
 Resources/voiceover/test/dt
-# never commit game or Hearthstone Access files (Blizzard code)
+Resources/loader/libhsaloader.dylib
+Resources/voiceover/libHSAVoiceOver.dylib
+# never commit game or Hearthstone Access files (Blizzard code): they only ever land here
 work/
 downloads/
-*.dll
 .DS_Store
