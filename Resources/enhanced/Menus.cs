@@ -142,6 +142,7 @@ namespace HSAEnhanced
             var parent = Owner(menu);
             if (parent is AccessibleHub) return;                 // HubMenu takes care of it
             if (parent is FallbackUI || parent is AccessiblePlayScreen) return;   // ours, built from the screen already
+            if (BuiltWholeByHsa(parent)) { if (GameState.Get() == null && Engine.Enabled) MarkLocked(menu); return; }
             var root = parent as Component;
             s_open = menu;
             if (GameState.Get() == null)
@@ -180,14 +181,25 @@ namespace HSAEnhanced
 
         static readonly ConditionalWeakTable<object, string> s_ownText = new ConditionalWeakTable<object, string>();
 
-        // HSA options whose action presses something the game shows as locked or disabled
-        // (e.g. HSA's mission list offers every mission): "locked" / "unavailable" is added.
-        // What an option presses is read from the objects its action captured.
+        static readonly ConditionalWeakTable<AccessibleMenu, List<KeyValuePair<int, object>>> s_hidden = new ConditionalWeakTable<AccessibleMenu, List<KeyValuePair<int, object>>>();
+
+        // HSA options whose action presses something the game shows as locked get "locked" added
+        // (e.g. HSA's mission list offers every mission); those whose button the game has disabled
+        // are taken out, and put back in their place once it is enabled again. What an option
+        // presses is read from the objects its action captured.
         static void MarkLocked(AccessibleMenu menu)
         {
             var list = MenuEdit.List(menu);
             if (list == null) return;
+            List<KeyValuePair<int, object>> hidden;
+            if (!s_hidden.TryGetValue(menu, out hidden)) { hidden = new List<KeyValuePair<int, object>>(); s_hidden.Add(menu, hidden); }
+            var index = MenuEdit.GetIndex(menu);
+            var selected = index >= 0 && index < list.Count ? list[index] : null;
+            foreach (var h in hidden) list.Insert(Math.Min(h.Key, list.Count), h.Value);
+            hidden.Clear();
+
             var extra = ExtraOptions.Of(menu);
+            var disabled = new List<object>();
             foreach (var option in list)
             {
                 if (extra.IsOurs(option)) continue;
@@ -197,8 +209,21 @@ namespace HSAEnhanced
                 string own;
                 if (!s_ownText.TryGetValue(option, out own)) { own = text; s_ownText.Add(option, own); }
                 var state = Ui.StateOf(Captured(click.Target));
+                if (state == Str.Unavailable) { disabled.Add(option); state = null; }
                 Ref.Set(option, "m_text", state == null ? own : Str.Join(own, state));
             }
+            // a menu of nothing but disabled options stays as it is
+            if (disabled.Count > 0 && disabled.Count < list.Count)
+            {
+                foreach (var o in disabled)
+                {
+                    hidden.Add(new KeyValuePair<int, object>(list.IndexOf(o), o));
+                    list.Remove(o);
+                }
+                Log.Once("menu '" + Ref.Get(menu, "m_menuName") + "': disabled options left out: " + disabled.Count);
+            }
+            int to = selected == null ? -1 : list.IndexOf(selected);
+            MenuEdit.SetIndex(menu, to >= 0 ? to : Math.Max(0, Math.Min(index, list.Count - 1)));
         }
 
         // The game object an action presses: a component it closes over (or is a method of)
@@ -245,7 +270,7 @@ namespace HSAEnhanced
             var menu = s_open;
             if (menu == null || GameState.Get() != null || !Engine.Enabled) return;
             var parent = Owner(menu);
-            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is AccessiblePlayScreen || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
+            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
             if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), false);
@@ -260,6 +285,14 @@ namespace HSAEnhanced
         static bool TakesScreenButtons(object parent)
         {
             return parent is AccessibleScreen && !(parent is AccessibleBlackMarket) && !(parent is AccessibleCollectionManager);
+        }
+
+        // Owners whose menus HSA builds whole, left as HSA makes them: the social list (HSA's menus
+        // for the list, a friend, a challenge and a request; the buttons under the list are every
+        // friend's challenge and chat buttons and its headers, which would be added to each of them)
+        static bool BuiltWholeByHsa(object parent)
+        {
+            return parent is FriendListFrame;
         }
 
         // the menu is still one of its owner's (not an old one it replaced)

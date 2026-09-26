@@ -98,14 +98,16 @@ namespace HSAEnhanced
 
             // the format button shows an icon only: named by the game's text for switching format and
             // the chosen format; pressed through its release event, which opens the game's picker
+            // (left out while the game has it disabled)
             var format = FormatButton();
-            if (format != null && !entries.Exists(x => x.Target == format))
+            if (format != null && format.IsEnabled() && !entries.Exists(x => x.Target == format))
                 entries.Add(new Entry { Key = Ui.ScreenOrderOf(format), Target = format, Press = () => PressFormat(format),
-                    Label = Str.Join(LocalizationUtils.Get(LocalizationKey.GLOBAL_SWITCH_FORMAT), FormatName(), format.IsEnabled() ? null : Str.Unavailable) });
+                    Label = Str.Join(LocalizationUtils.Get(LocalizationKey.GLOBAL_SWITCH_FORMAT), FormatName()) });
 
-            // Play / Choose when the tray shows it without a text of its own
+            // Play / Choose when the tray shows it without a text of its own; not until it can be
+            // pressed (a deck chosen)
             var play = PlayButtonOf();
-            if (play != null && play.gameObject.activeInHierarchy && !entries.Exists(x => x.Target == play))
+            if (play != null && play.gameObject.activeInHierarchy && Enabled(play) && !entries.Exists(x => x.Target == play))
                 entries.Add(new Entry { Key = Ui.ScreenOrderOf(play), Target = play, Label = PlayLabel(), Press = Play });
 
             // the rank medal (ranked play), where the game shows it
@@ -348,7 +350,7 @@ namespace HSAEnhanced
             sb.Append(Title()).Append('|');
             foreach (var c in Choices()) sb.Append(c.Button.GetInstanceID()).Append(',');
             var selected = Selected();
-            sb.Append('|').Append(selected == null ? 0 : selected.GetInstanceID()).Append(Enabled(PlayButtonOf()));
+            sb.Append('|').Append(selected == null ? 0 : selected.GetInstanceID()).Append(Enabled(PlayButtonOf())).Append(Enabled(FormatButton()));
             foreach (var b in Ui.ButtonsIn(m_tray, new string[0], v => false)) sb.Append('|').Append(b.Label);
             return sb.ToString();
         }

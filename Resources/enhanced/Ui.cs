@@ -564,19 +564,17 @@ namespace HSAEnhanced
                             if (seen.Add(inner.Object)) found.Add(inner);
                         continue;
                     }
-                    // disabled but on screen: listed as unavailable (the game answers a press on it, e.g.
-                    // the box says why its shop is closed)
+                    // hidden or disabled: left out (a button the game has disabled does nothing)
                     // (the button's own flags count too when a widget holds it: the box's Pre-release
                     // Tavern Brawl widget stays up while its button is hidden)
                     var why = WhyHidden(shownBy) ?? (shownBy != c && !StateFlagsAllow(c) ? "hidden by its state" : null);
                     if (why == "hidden by its state") Log.Once("not shown by the game (its state): " + t.Name + "." + f.Name);
-                    bool disabled = why == "disabled";
-                    if ((why != null && !disabled) || !seen.Add(c.gameObject)) continue;
+                    if (why == "disabled") Log.Once("disabled by the game, left out: " + t.Name + "." + f.Name);
+                    if (why != null || !seen.Add(c.gameObject)) continue;
                     var label = LabelOf(c);
                     if (label.Length == 0) label = GameNameFor(f.Name);
                     // no text the game has for it: left out rather than named in English
                     if (label.Length == 0) { Log.Once("button without a game text left out: " + t.Name + "." + f.Name); continue; }
-                    if (disabled) label = Str.Join(label, Str.Unavailable);
                     found.Add(new GameButton { Target = c, Label = label, Click = ClickOf(c) });
                 }
         }
