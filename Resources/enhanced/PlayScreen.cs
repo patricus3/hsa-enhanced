@@ -76,9 +76,14 @@ namespace HSAEnhanced
         // a choice the tray offers: a deck or an opponent, on a page of the tray
         class Choice { internal int Page; internal PegUIElement Button; }
 
+        List<Entry> m_entries = new List<Entry>();
+
         void Build()
         {
+            // the option the player is on, to stay on it: the same button (a deck, Play) or the same
+            // text; its place changes when the tray shows or hides a button
             var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
+            var was = keep >= 0 && keep < m_entries.Count ? m_entries[keep] : null;
             m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, Title(), GoBack));
             var entries = new List<Entry>();
             var choices = Choices();
@@ -135,7 +140,10 @@ namespace HSAEnhanced
             foreach (var e in entries) { var x = e; m_menu.AddOption(x.Label, () => { Log.Info("play screen: pressed " + x.Label); x.Press(); }); labels.Add(x.Label); }
             Log.Once(m_tray.GetType().Name + ": " + string.Join(" | ", labels.ToArray()));
 
-            m_menu.SetIndex(Math.Max(0, Math.Min(keep, m_menu.GetNumItems() - 1)));
+            m_entries = entries;
+            int to = was == null ? -1 : entries.FindIndex(x => x.Target != null && x.Target == was.Target);
+            if (to < 0 && was != null) to = entries.FindIndex(x => x.Label == was.Label);
+            m_menu.SetIndex(to >= 0 ? to : Math.Max(0, Math.Min(keep, m_menu.GetNumItems() - 1)));
             m_signature = Signature();
         }
 

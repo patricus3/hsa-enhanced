@@ -21,6 +21,8 @@ namespace HSAEnhanced
             return null;
         }
 
+        internal static bool IsShown() { return Shown() != null; }
+
         static AdventureBookPageDataModel Page(AdventureBookPageDisplay d) { return Ref.Get<AdventureBookPageDataModel>(d, "m_pageDataModel"); }
 
         internal static string Title()
@@ -42,6 +44,30 @@ namespace HSAEnhanced
             if (page.PageType == AdventureBookPageType.MAP) return Chapters(d, page);
             if (page.PageType == AdventureBookPageType.CHAPTER) return Missions(d, page);
             return null;
+        }
+
+        // HSA's mission menu of a chapter page ("Mission 1, completed", ...): the missions with their
+        // names and states in the same order, played the same way; true when it is such a menu
+        internal static bool FillMissionMenu(AccessibleMenu menu)
+        {
+            var d = Shown();
+            var page = d == null ? null : Page(d);
+            if (page == null || page.PageType != AdventureBookPageType.CHAPTER) return false;
+            var missions = Missions(d, page);
+            if (missions.Count == 0) return false;
+            var list = MenuEdit.List(menu);
+            if (list == null) return false;
+            var labels = new List<string>();
+            foreach (var m in missions) labels.Add(m.Label);
+            var current = new List<string>();
+            foreach (var o in list) current.Add(MenuEdit.TextOf(o));
+            if (string.Join("\n", current.ToArray()) == string.Join("\n", labels.ToArray())) return true;
+            var index = MenuEdit.GetIndex(menu);
+            list.Clear();
+            foreach (var m in missions) { var b = m; menu.AddOption(b.Label, () => { Log.Info("option: " + b.Label); b.Click(); }); }
+            MenuEdit.SetIndex(menu, Math.Max(0, Math.Min(index, list.Count - 1)));
+            Log.Once("book: mission menu with the missions' names (" + missions.Count + ")");
+            return true;
         }
 
         static List<GameButton> Chapters(AdventureBookPageDisplay d, AdventureBookPageDataModel page)

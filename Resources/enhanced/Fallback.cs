@@ -33,6 +33,7 @@ namespace HSAEnhanced
         }
         FallbackUI m_ui;
         string m_candidate;     // target seen on the previous check
+        float m_candidateSince;
         string m_emptyKey;      // target that had no buttons, and until when not to look again
         float m_emptyUntil;
         float m_next;
@@ -113,7 +114,10 @@ namespace HSAEnhanced
             if (key == null) { m_candidate = null; Hide(); return; }
 
             // the same target on two checks in a row: HSA had its chance to take it
-            if (key != m_candidate) { m_candidate = key; return; }
+            if (key != m_candidate) { m_candidate = key; m_candidateSince = Time.unscaledTime; return; }
+            // an adventure book page: HSA's page reader takes it about a second after the adventure
+            // screen goes quiet; ours only if it has not after a few seconds (no menu swapped under the player)
+            if (m_ui == null && !popup && Book.IsShown() && Time.unscaledTime - m_candidateSince < 3f) return;
 
             if (m_ui != null && m_ui.Key == key) { m_ui.Refresh(false); return; }
             // this target had nothing to offer a moment ago: look again only every 2 seconds

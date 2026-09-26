@@ -149,10 +149,13 @@ namespace HSAEnhanced
             {
                 MarkLocked(menu);
                 if (!Engine.Enabled) { }                          // --use-hsa-menus: HSA's options only
+                // an adventure chapter's missions: named, nothing from the page added (its click area)
+                else if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) { }
                 else if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), true);
                 else if (WidgetOf(parent) != null) AddScreenButtons(menu, Ui.ClickablesUnder(WidgetOf(parent).gameObject, null), true);
-                // HSA screens that are not game objects (adventures, ...): the whole screen
-                else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), true);
+                // HSA screens that are not game objects (adventures, ...): the whole screen, once it
+                // stayed the same for two checks (right after a screen change the one left is still there)
+                else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), false);
             }
             // not during a match: the game's back there is the concede menu
             if (GameState.Get() == null && !(parent is AccessibleBlackMarket))
@@ -273,6 +276,7 @@ namespace HSAEnhanced
             if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
+            if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) return;
             if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), false);
             else if (WidgetOf(parent) != null) AddScreenButtons(menu, Ui.ClickablesUnder(WidgetOf(parent).gameObject, null), false);
             else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), false);
