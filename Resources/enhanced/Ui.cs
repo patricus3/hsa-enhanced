@@ -555,6 +555,15 @@ namespace HSAEnhanced
                     // a widget is shown or not as a whole; the button inside it gives label and press
                     var shownBy = v is Widget ? (Component)v : c;
                     if (c == null) continue;
+                    // a widget holding several buttons (the rank display: medal and rewards chest): each of
+                    // its buttons, pressed through its own click; the widget as a whole takes no click
+                    if (c is Widget)
+                    {
+                        if (WhyHidden(c) != null || !seen.Add(c.gameObject)) continue;
+                        foreach (var inner in ClickablesUnder(c.gameObject, null))
+                            if (seen.Add(inner.Object)) found.Add(inner);
+                        continue;
+                    }
                     // disabled but on screen: listed as unavailable (the game answers a press on it, e.g.
                     // the box says why its shop is closed)
                     // (the button's own flags count too when a widget holds it: the box's Pre-release

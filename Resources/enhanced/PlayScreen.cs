@@ -90,7 +90,7 @@ namespace HSAEnhanced
             {
                 if (choiceObjects.Contains(b.Object)) continue;     // a deck / an opponent: listed with the choices
                 var button = b;
-                var e = new Entry { Key = Ui.ScreenOrderOf(b.Target), Label = b.Label, Target = b.Target, Press = () => { Log.Info("option: " + button.Label); WatchForPanel(); button.Click(); } };
+                var e = new Entry { Key = Ui.ScreenOrderOf(b.Target), Label = b.Label, Target = b.Target, Press = () => { Log.Info("option: " + GameButton.Describe(new List<GameButton> { button })); WatchForPanel(); button.Click(); } };
                 if (b.Target is SwitchFormatButton) { var f = (SwitchFormatButton)b.Target; e.Label = Str.Join(b.Label, FormatName()); e.Press = () => PressFormat(f); }
                 else if (b.Target is PlayButton) { e.Label = PlayLabel(); e.Press = Play; }
                 entries.Add(e);

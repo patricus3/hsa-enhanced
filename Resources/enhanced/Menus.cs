@@ -150,8 +150,8 @@ namespace HSAEnhanced
                 if (!Engine.Enabled) { }                          // --use-hsa-menus: HSA's options only
                 else if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), true);
                 else if (WidgetOf(parent) != null) AddScreenButtons(menu, Ui.ClickablesUnder(WidgetOf(parent).gameObject, null), true);
-                // HSA screens that are not game objects (adventures, collection, ...): the whole screen
-                else if (parent is AccessibleScreen && !(parent is AccessibleBlackMarket)) AddScreenButtons(menu, Ui.ScreenButtons(), true);
+                // HSA screens that are not game objects (adventures, ...): the whole screen
+                else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), true);
             }
             // not during a match: the game's back there is the concede menu
             if (GameState.Get() == null && !(parent is AccessibleBlackMarket))
@@ -250,7 +250,16 @@ namespace HSAEnhanced
             var root = parent as Component;
             if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), false);
             else if (WidgetOf(parent) != null) AddScreenButtons(menu, Ui.ClickablesUnder(WidgetOf(parent).gameObject, null), false);
-            else if (parent is AccessibleScreen && !(parent is AccessibleBlackMarket)) AddScreenButtons(menu, Ui.ScreenButtons(), false);
+            else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), false);
+        }
+
+        // Screens whose menus get the buttons of the whole screen. Not the Black Market, and not the
+        // collection: HSA gives each of its menus (a card's crafting, filters, decks, a deck) just
+        // what belongs there, and the whole screen would add the deck tray and the crafting
+        // checkboxes to every one of them
+        static bool TakesScreenButtons(object parent)
+        {
+            return parent is AccessibleScreen && !(parent is AccessibleBlackMarket) && !(parent is AccessibleCollectionManager);
         }
 
         // the menu is still one of its owner's (not an old one it replaced)
