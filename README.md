@@ -16,6 +16,10 @@ This project is not affiliated with Blizzard Entertainment or with the Hearthsto
 
 `--use-hsa-menus` (installer option) keeps Hearthstone Access's own menus; the other additions stay.
 
+## Download
+
+Ready-to-use packages are in [`release/`](release/): **Hearthstone access for Windows.zip**, **Hearthstone access for Mac.zip** and **sourcecode.zip** (the full source). Both packages contain the same `Resources`; only the installer differs.
+
 ## Windows
 
 Requirements: Hearthstone installed with Battle.net, an internet connection during installation. The .NET 8 SDK is downloaded if missing.

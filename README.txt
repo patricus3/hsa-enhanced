@@ -20,6 +20,12 @@ What it adds to Hearthstone Access
 --use-hsa-menus (installer option) keeps Hearthstone Access's own menus; the other additions stay.
 
 
+Download
+--------
+
+Ready-to-use packages are in release/: Hearthstone access for Windows.zip, Hearthstone access for Mac.zip and sourcecode.zip (the full source). Both packages contain the same Resources; only the installer differs.
+
+
 Windows
 -------
 
