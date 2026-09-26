@@ -373,6 +373,17 @@ namespace HSAEnhanced
                 catch { }
                 return Str.Join(Str.Game("GLOBAL_SET_ROTATION_ROLLOVER_HEADER"), Str.Clean(year));
             }
+            // the game's own text for the button, found by its field name in the game's string
+            // tables (current language): m_luckyDrawButtonController -> GLUE_TOOLTIP_BUTTON_LUCKY_DRAW_HEADLINE ...
+            var core = Regex.Replace(field, "^m_", "");
+            core = Regex.Replace(core, "(ButtonController|ButtonWidget|ButtonObject|Button|Widget|Controller|Ribbon|Reference|Ref)$", "");
+            if (core.Length == 0) return "";
+            var snake = Regex.Replace(core, "([a-z0-9])([A-Z])", "$1_$2").ToUpperInvariant();
+            foreach (var key in new[] { "GLUE_TOOLTIP_BUTTON_" + snake + "_HEADLINE", "GLUE_" + snake + "_BUTTON", "GLUE_" + snake + "_PHONE_BUTTON",
+                                        "GLOBAL_" + snake, "GLUE_" + snake, "GLUE_" + snake + "_TITLE", "GLOBAL_" + snake + "_TITLE", "GLUE_" + snake + "_HEADER" })
+            {
+                try { if (GameStrings.HasKey(key)) { var s = Str.Clean(GameStrings.Get(key)); if (s.Length > 0) return s; } } catch { }
+            }
             return "";
         }
 
@@ -623,6 +634,22 @@ namespace HSAEnhanced
             if (list == null) return;
             foreach (var o in options) list.Remove(o);
             ClampIndex(menu);
+        }
+
+        // names of the methods an option runs (its delegate fields)
+        internal static HashSet<string> ActionNames(object option)
+        {
+            var names = new HashSet<string>();
+            for (var t = option.GetType(); t != null && t != typeof(object); t = t.BaseType)
+                foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (!typeof(Delegate).IsAssignableFrom(f.FieldType)) continue;
+                    Delegate d;
+                    try { d = f.GetValue(option) as Delegate; } catch { continue; }
+                    if (d == null) continue;
+                    foreach (var one in d.GetInvocationList()) if (one.Method != null) names.Add(one.Method.Name);
+                }
+            return names;
         }
 
         internal static void ClampIndex(AccessibleMenu menu)

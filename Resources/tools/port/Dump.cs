@@ -145,3 +145,13 @@ static class Abstracts
         return bad;
     }
 }
+
+static class Fields
+{
+    public static void Run(string path, string type)
+    {
+        var m = ModuleDefinition.ReadModule(path);
+        foreach (var t in Analyze.AllTypes(m).Where(t => t.FullName == type))
+            foreach (var f in t.Fields) Console.WriteLine($"{f.FieldType.FullName} {f.Name}");
+    }
+}

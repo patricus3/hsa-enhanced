@@ -24,6 +24,7 @@ switch (args[0])
     case "lostcalls": LostCalls.Run(args[1], args[2], args[3], args[4]); break;
     case "type": TypeInfo.Run(args[1], args[2]); break;
     case "abstracts": Environment.Exit(Abstracts.Run(args[1]) > 0 ? 1 : 0); break;
+    case "fields": Fields.Run(args[1], args[2]); break;
     case "il": Dump.Il(args[1], args[2]); break;
     case "api": Dump.Api(args[1]); break;
     case "users": Dump.Users(args[1], args[2]); break;

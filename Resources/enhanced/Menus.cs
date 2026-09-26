@@ -258,8 +258,10 @@ namespace HSAEnhanced
             var buttons = new List<GameButton>();
             bool hasBack = MenuEdit.GetBack(menu) != null;
             var title = Ref.Get(menu, "m_menuName") as string;
+            var covered = CoveredTargets();
             foreach (var b in shown)
             {
+                if (b.Target != null && covered.Contains(b.Target.gameObject)) continue;   // an option presses it already
                 if (!string.IsNullOrEmpty(title) && Labels.Similar(title, b.Label) && Labels.Norm(title) == Labels.Norm(b.Label)) continue;
                 if (hasBack && Labels.IsBack(b.Label)) continue;     // the menu goes back already
                 if (!Labels.SimilarToAny(own, b.Label)) { own.Add(b.Label); buttons.Add(b); }
@@ -272,6 +274,25 @@ namespace HSAEnhanced
                 while (n > 0 && extra.IsOurs(list[n - 1])) n--;
                 return n > 0 && Labels.IsBack(MenuEdit.TextOf(list[n - 1])) ? n - 1 : -1;
             }, immediate);
+        }
+
+        // Buttons the menu's own options press already, recognised by identity (any language):
+        // the game modes screen's confirm button (choosing a mode presses it) and its back button
+        static HashSet<GameObject> CoveredTargets()
+        {
+            var set = new HashSet<GameObject>();
+            try
+            {
+                var gm = GameModeDisplay.Get();
+                if (gm != null)
+                    foreach (var f in new[] { "m_playButton", "m_backButton" })
+                    {
+                        var c = Ui.Resolve(Ref.Get(gm, f));
+                        if (c != null && c) set.Add(c.gameObject);
+                    }
+            }
+            catch { }
+            return set;
         }
 
         internal static void BeforeHorizontalRead(object menu)
