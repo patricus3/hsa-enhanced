@@ -41,7 +41,7 @@ namespace HSAEnhanced
                     if (playable)
                         label = Str.Join(name, Str.Clean(First(sub.GetShortName(), sub.GetDescription())));
                     else
-                        label = Str.Join(name, Str.Clean(First(sub.GetLockedShortName(), sub.GetShortName())), Str.T("ACCESSIBILITY_ENH_LOCKED", "locked"),
+                        label = Str.Join(name, Str.Clean(First(sub.GetLockedShortName(), sub.GetShortName())), Str.Locked,
                                          Str.Clean(First(sub.GetRequirementsDescription(), sub.GetLockedDescription())));
                     menu.AddOption(label, () => Choose(scene, adventure, mode));
                 }

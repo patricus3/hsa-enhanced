@@ -140,15 +140,12 @@ $gameAccessibility = Join-Path $Game 'Accessibility'
 New-Item -ItemType Directory -Force $gameAccessibility | Out-Null
 Copy-Item (Join-Path $hsa 'Accessibility\Sounds') $gameAccessibility -Recurse -Force
 Copy-Item (Join-Path $hsa 'Accessibility\hsa_manifest.json') $gameAccessibility -Force -ErrorAction SilentlyContinue
-$extra = Get-Content -Raw (Join-Path $Src 'enhanced\ACCESSIBILITY_ENHANCED.txt')
 foreach ($d in Get-ChildItem -Directory (Join-Path $hsa 'Strings')) {
     $f = Join-Path $d.FullName 'ACCESSIBILITY.txt'
     if (-not (Test-Path $f)) { continue }
     $dest = Join-Path $Game "Strings\$($d.Name)"
     New-Item -ItemType Directory -Force $dest | Out-Null
-    $text = [IO.File]::ReadAllText($f)
-    if ($Enh) { $text = $text.TrimEnd("`r", "`n") + "`n" + $extra }    # English texts of the enhancements (ACCESSIBILITY_ENH_*)
-    [IO.File]::WriteAllText((Join-Path $dest 'ACCESSIBILITY.txt'), $text, (New-Object Text.UTF8Encoding $false))
+    Copy-Item $f (Join-Path $dest 'ACCESSIBILITY.txt') -Force
 }
 # the game file last: until here the game still starts as it was
 Copy-Item $Out $GameAsm -Force

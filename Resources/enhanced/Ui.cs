@@ -12,24 +12,33 @@ namespace HSAEnhanced
 {
     static class Str
     {
-        // Text from the game's string tables (ACCESSIBILITY_ENHANCED.txt is appended to
-        // every locale's ACCESSIBILITY.txt); English when a key is missing.
-        internal static string T(string key, string english, params object[] args)
-        {
-            try
-            {
-                if (GameStrings.HasKey(key)) return args.Length == 0 ? GameStrings.Get(key) : GameStrings.Format(key, args);
-            }
-            catch (Exception e) { Log.Error(e); }
-            return args.Length == 0 ? english : string.Format(english, args);
-        }
+        // Every word the mod says comes from the game's own string tables (the game's and
+        // Hearthstone Access's), so it is in the player's language; the mod has no texts of its own.
 
         // A game string, or null when the table lacks it
         internal static string Game(string key, params object[] args)
         {
-            if (!GameStrings.HasKey(key)) return null;
-            return Clean(args.Length == 0 ? GameStrings.Get(key) : GameStrings.Format(key, args));
+            try
+            {
+                if (!GameStrings.HasKey(key)) return null;
+                return Clean(args.Length == 0 ? GameStrings.Get(key) : GameStrings.Format(key, args));
+            }
+            catch (Exception e) { Log.Error(e); return null; }
         }
+
+        // The first of these game strings the tables have, or ""
+        internal static string Word(params string[] keys)
+        {
+            foreach (var k in keys) { var s = Game(k); if (!string.IsNullOrEmpty(s)) return s; }
+            return "";
+        }
+
+        // words for states, from the game's tables
+        internal static string Locked { get { return Word("GLUE_ADVENTURE_LOCKED", "ACCESSIBILITY_SCREEN_MISSION_LOCKED"); } }
+        internal static string Unavailable { get { return Word("GLOBAL_NOT_AVAILABLE"); } }
+        internal static string NotOwned { get { return Word("GLUE_COLLECTION_DECK_HELPER_REPLACE_UNOWNED_CARD"); } }
+        internal static string Completed { get { return Word("ACCESSIBILITY_SCREEN_MISSION_COMPLETED"); } }
+        internal static string Back { get { return Word("GLOBAL_BACK"); } }
 
         static readonly Regex Placeholder = new Regex(@"<PH>\s*");
 
@@ -52,18 +61,6 @@ namespace HSAEnhanced
                 sb.Append(p);
             }
             return sb.ToString();
-        }
-
-        // m_blackMarketButtonController -> "Black market"
-        internal static string Humanize(string fieldName)
-        {
-            var n = fieldName;
-            if (n.StartsWith("m_")) n = n.Substring(2);
-            foreach (var suffix in new[] { "ButtonController", "ButtonWidget", "Button", "Ribbon", "Widget" })
-                if (n.EndsWith(suffix) && n.Length > suffix.Length) { n = n.Substring(0, n.Length - suffix.Length); break; }
-            n = Regex.Replace(n, "([a-z0-9])([A-Z])", "$1 $2");
-            n = n.ToLowerInvariant().Trim();
-            return n.Length == 0 ? "" : char.ToUpperInvariant(n[0]) + n.Substring(1);
         }
     }
 
@@ -124,9 +121,9 @@ namespace HSAEnhanced
             for (var type = c.GetType(); type != null && type != typeof(MonoBehaviour); type = type.BaseType)
                 foreach (var f in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     if (f.FieldType == typeof(bool) && LockedField.IsMatch(f.Name) && (bool)f.GetValue(c))
-                        return Str.T("ACCESSIBILITY_ENH_LOCKED", "locked");
+                        return Str.Locked;
             var peg = c as PegUIElement;
-            if (peg != null && !peg.IsEnabled()) return Str.T("ACCESSIBILITY_ENH_UNAVAILABLE", "unavailable");
+            if (peg != null && !peg.IsEnabled()) return Str.Unavailable;
             return null;
         }
 
@@ -153,7 +150,10 @@ namespace HSAEnhanced
                 {
                     if (f.FieldType != typeof(bool)) continue;
                     var n = f.Name;
-                    if (n.IndexOf("EnabledAndVisible", StringComparison.OrdinalIgnoreCase) >= 0 || n == "m_isEnabled" || n == "m_boxAllowsVisibility")
+                    // (m_isShowing: e.g. the Pre-release Tavern Brawl button is in the box all the
+                    // time and shown only while such a brawl is on; its click does nothing otherwise)
+                    if (n.IndexOf("EnabledAndVisible", StringComparison.OrdinalIgnoreCase) >= 0 || n == "m_isEnabled" || n == "m_boxAllowsVisibility"
+                        || n == "m_isShowing" || n == "m_isShown" || n == "m_isVisible")
                         if (!(bool)f.GetValue(o)) return false;
                 }
             return true;
@@ -195,14 +195,23 @@ namespace HSAEnhanced
 
         // What the player sees written on the element: its own text, then (widget buttons) the
         // data bound to its widget, then an icon button's tooltip headline
+        // (a text of symbols only, such as an info button's "?", names nothing: the tooltip does)
         internal static string LabelOf(Component c)
         {
             if (c == null) return "";
             var s = OwnText(c);
-            if (s.Length > 0) return s;
+            if (HasWords(s)) return s;
             var clickable = c as Clickable;
-            if (clickable != null) { s = WidgetText(clickable); if (s.Length > 0) return s; }
-            return TooltipHeadline(c);
+            if (clickable != null) { s = WidgetText(clickable); if (HasWords(s)) return s; }
+            s = TooltipHeadline(c);
+            return HasWords(s) ? s : "";
+        }
+
+        internal static bool HasWords(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (var ch in s) if (char.IsLetterOrDigit(ch)) return true;
+            return false;
         }
 
         static string OwnText(Component c)
@@ -412,6 +421,31 @@ namespace HSAEnhanced
             return () => AccessibleInputMgr.Click(c);
         }
 
+        // The values of `owner`'s fields that are a T (a live object), found by type, not by name
+        internal static List<T> FieldsOfType<T>(object owner) where T : class
+        {
+            var found = new List<T>();
+            if (owner == null) return found;
+            for (var t = owner.GetType(); t != null && t != typeof(MonoBehaviour) && t != typeof(object); t = t.BaseType)
+                foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (!typeof(T).IsAssignableFrom(f.FieldType) && !f.FieldType.IsAssignableFrom(typeof(T))) continue;
+                    object v;
+                    try { v = f.GetValue(owner); } catch { continue; }
+                    var x = v as T;
+                    if (x == null) continue;
+                    if (x is UnityEngine.Object && !(x as UnityEngine.Object)) continue;
+                    found.Add(x);
+                }
+            return found;
+        }
+
+        internal static T FieldOfType<T>(object owner) where T : class
+        {
+            var all = FieldsOfType<T>(owner);
+            return all.Count == 0 ? null : all[0];
+        }
+
         // Every button held in the fields of `owner` (Box, RibbonButtonsUI, ...) that is on screen.
         // Fields named in `skip` are left out; nested holders listed in `descend` are walked too.
         internal static List<GameButton> ButtonsIn(object owner, ICollection<string> skip, Func<object, bool> descend)
@@ -419,7 +453,74 @@ namespace HSAEnhanced
             var found = new List<GameButton>();
             var seen = new HashSet<GameObject>();
             Collect(owner, skip, descend, found, seen, 0);
-            return found;
+            return PreferListened(found);
+        }
+
+        // Two buttons that read the same (the box has a Pre-release Tavern Brawl button of its own
+        // and one on its ribbon, and only the ribbon's is listened to): the one the game listens to
+        // for a click stays, in the place of the first
+        static List<GameButton> PreferListened(List<GameButton> found)
+        {
+            var result = new List<GameButton>();
+            foreach (var b in found)
+            {
+                int same = result.FindIndex(x => Labels.Norm(x.Label) == Labels.Norm(b.Label));
+                if (same < 0) { result.Add(b); continue; }
+                if (Listened(b.Target) > Listened(result[same].Target))
+                {
+                    Log.Once("same button twice, the one the game listens to kept: " + GameButton.Describe(new List<GameButton> { b }));
+                    result[same] = b;
+                }
+            }
+            return result;
+        }
+
+        // For the log: a button's own flags and which of its parts are missing, and the box's state
+        // (why a press did nothing)
+        internal static string StateText(Component c)
+        {
+            var parts = new List<string>();
+            try
+            {
+                for (var t = c == null ? null : c.GetType(); t != null && t != typeof(PegUIElement) && t != typeof(MonoBehaviour); t = t.BaseType)
+                    foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                    {
+                        object v;
+                        try { v = f.GetValue(c); } catch { continue; }
+                        if (f.FieldType == typeof(bool)) parts.Add(f.Name + "=" + v);
+                        else if (!f.FieldType.IsValueType && (v == null || (v is UnityEngine.Object && !(UnityEngine.Object)v))) parts.Add(f.Name + " missing");
+                    }
+                var box = Box.Get();
+                if (box != null) parts.Add("box with buttons=" + box.IsInStateWithButtons());
+                if (SceneMgr.Get() != null) parts.Add("scene " + SceneMgr.Get().GetMode());
+                parts.Add("online=" + Network.IsLoggedIn());
+            }
+            catch (Exception e) { parts.Add(e.GetType().Name); }
+            return string.Join(", ", parts.ToArray());
+        }
+
+        // 2: the game listens to its release (a click); 1: its widget has event listeners; 0: neither
+        internal static int Listened(Component c)
+        {
+            try
+            {
+                var peg = c as PegUIElement;
+                var map = peg == null ? null : Ref.Get(peg, "m_eventListeners") as IEnumerable;
+                if (map != null)
+                    foreach (var entry in map)
+                    {
+                        var t = entry.GetType();
+                        var key = t.GetProperty("Key"); var value = t.GetProperty("Value");
+                        if (key == null || value == null) break;
+                        var k = key.GetValue(entry, null);
+                        var list = value.GetValue(entry, null) as ICollection;
+                        if (k is UIEventType && (UIEventType)k == UIEventType.RELEASE && list != null && list.Count > 0) return 2;
+                    }
+                var widget = c == null ? null : c.GetComponent<Widget>();
+                if (widget != null && Ref.Get(widget, "m_eventListeners") != null) return 1;
+            }
+            catch { }
+            return 0;
         }
 
         static void Collect(object owner, ICollection<string> skip, Func<object, bool> descend, List<GameButton> found, HashSet<GameObject> seen, int depth)
@@ -456,14 +557,17 @@ namespace HSAEnhanced
                     if (c == null) continue;
                     // disabled but on screen: listed as unavailable (the game answers a press on it, e.g.
                     // the box says why its shop is closed)
-                    var why = WhyHidden(shownBy);
+                    // (the button's own flags count too when a widget holds it: the box's Pre-release
+                    // Tavern Brawl widget stays up while its button is hidden)
+                    var why = WhyHidden(shownBy) ?? (shownBy != c && !StateFlagsAllow(c) ? "hidden by its state" : null);
+                    if (why == "hidden by its state") Log.Once("not shown by the game (its state): " + t.Name + "." + f.Name);
                     bool disabled = why == "disabled";
                     if ((why != null && !disabled) || !seen.Add(c.gameObject)) continue;
                     var label = LabelOf(c);
                     if (label.Length == 0) label = GameNameFor(f.Name);
-                    if (label.Length == 0) label = Str.Humanize(f.Name);
-                    if (label.Length == 0) continue;
-                    if (disabled) label = Str.Join(label, Str.T("ACCESSIBILITY_ENH_UNAVAILABLE", "unavailable"));
+                    // no text the game has for it: left out rather than named in English
+                    if (label.Length == 0) { Log.Once("button without a game text left out: " + t.Name + "." + f.Name); continue; }
+                    if (disabled) label = Str.Join(label, Str.Unavailable);
                     found.Add(new GameButton { Target = c, Label = label, Click = ClickOf(c) });
                 }
         }
@@ -527,18 +631,68 @@ namespace HSAEnhanced
             foreach (var kv in s_leftOut) why.Add(kv.Key + " " + kv.Value);
             Log.Once("screen scan (" + (SceneMgr.Get() == null ? "?" : SceneMgr.Get().GetMode().ToString()) + "): " + found.Count + " buttons; left out: " + (why.Count == 0 ? "none" : string.Join(", ", why.ToArray())));
             // reading order: top to bottom, left to right
-            found.Sort((a, b) => ScreenOrder(a.Target).CompareTo(ScreenOrder(b.Target)));
+            SortByScreen(found);
             return found;
         }
 
         internal static float ScreenOrderOf(Component c) { return ScreenOrder(c); }
 
+        // (text object, text) for each text shown under `root` that is not on a button, in reading order
+        internal static List<KeyValuePair<Component, string>> TextsUnder(GameObject root)
+        {
+            var found = new List<KeyValuePair<Component, string>>();
+            if (root == null) return found;
+            var seen = new HashSet<string>();
+            foreach (var ut in root.GetComponentsInChildren<UberText>(false))
+            {
+                if (ut == null || !ut.isActiveAndEnabled) continue;
+                if (ut.GetComponentInParent<PegUIElement>() != null || ut.GetComponentInParent<Clickable>() != null) continue;
+                var s = ShownText(ut.Text);
+                if (!HasWords(s) || !seen.Add(s)) continue;
+                found.Add(new KeyValuePair<Component, string>(ut, s));
+            }
+            var keyed = new List<KeyValuePair<float, int>>();
+            for (int i = 0; i < found.Count; i++) keyed.Add(new KeyValuePair<float, int>(ScreenOrder(found[i].Key), i));
+            keyed.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+            var sorted = new List<KeyValuePair<Component, string>>();
+            foreach (var k in keyed) sorted.Add(found[k.Value]);
+            return sorted;
+        }
+
+        // Stable sort into reading order (buttons in the same place keep their order)
+        internal static void SortByScreen(List<GameButton> buttons)
+        {
+            var keyed = new List<KeyValuePair<float, int>>();
+            for (int i = 0; i < buttons.Count; i++) keyed.Add(new KeyValuePair<float, int>(ScreenOrder(buttons[i].Target), i));
+            keyed.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+            var sorted = new List<GameButton>();
+            foreach (var k in keyed) sorted.Add(buttons[k.Value]);
+            buttons.Clear(); buttons.AddRange(sorted);
+        }
+
+        // Reading order on screen: rows top to bottom (about a twentieth of the screen high),
+        // left to right in a row; seen through the camera that draws the element
         static float ScreenOrder(Component c)
         {
-            var cam = Camera.main;
-            if (cam == null) return 0;
-            var p = cam.WorldToScreenPoint(c.transform.position);
-            return -Mathf.Round(p.y / 40f) * 100000f + p.x;
+            var p = ScreenPoint(c);
+            if (p == null) return 0;
+            float row = Mathf.Max(20f, Screen.height / 20f);
+            return -Mathf.Round(p.Value.y / row) * 100000f + p.Value.x;
+        }
+
+        // Where the element is on screen, in pixels; null when no camera draws it
+        internal static Vector3? ScreenPoint(Component c)
+        {
+            if (c == null || !c) return null;
+            var layer = 1 << c.gameObject.layer;
+            Camera best = null;
+            foreach (var cam in Camera.allCameras)
+                if (cam != null && cam.isActiveAndEnabled && (cam.cullingMask & layer) != 0 && (best == null || cam.depth > best.depth)) best = cam;
+            if (best == null) best = Camera.main;
+            if (best == null) return null;
+            var p = best.WorldToScreenPoint(c.transform.position);
+            if (p.z < 0) return null;     // behind the camera
+            return p;
         }
 
         // Every button on screen (visible to a camera), same rules
@@ -617,7 +771,7 @@ namespace HSAEnhanced
             foreach (var b in buttons)
             {
                 var button = b;
-                menu.AddOption(button.Label, () => { try { Log.Info("option: " + button.Label); button.Click(); } catch (Exception e) { Log.Error(e); } });
+                menu.AddOption(button.Label, () => { try { Log.Info("option: " + button.Label + " (" + Ui.StateText(button.Target) + ")"); button.Click(); } catch (Exception e) { Log.Error(e); } });
                 added.Add(list[list.Count - 1]);
             }
             if (position >= 0 && position < list.Count - added.Count)
@@ -650,6 +804,14 @@ namespace HSAEnhanced
                     foreach (var one in d.GetInvocationList()) if (one.Method != null) names.Add(one.Method.Name);
                 }
             return names;
+        }
+
+        // A menu built again in place of `old`: it keeps taking Enter. HSA's menu acts on Enter only
+        // once it has started reading, and a rebuilt menu is not read again
+        internal static AccessibleMenu Carry(AccessibleMenu old, AccessibleMenu fresh)
+        {
+            if (old != null && Ref.Get<bool>(old, "m_isReading")) Ref.Set(fresh, "m_isReading", true);
+            return fresh;
         }
 
         internal static void ClampIndex(AccessibleMenu menu)

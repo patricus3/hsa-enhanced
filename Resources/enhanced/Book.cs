@@ -73,12 +73,12 @@ namespace HSAEnhanced
 
         static string ChapterState(AdventureChapterDataModel c)
         {
-            if (c.TimeLocked) return Str.Join(Str.T("ACCESSIBILITY_ENH_LOCKED", "locked"), Str.Clean(c.TimeLockInfoMessage));
-            if (!c.PlayerOwnsChapter) return Str.T("ACCESSIBILITY_ENH_NOT_OWNED", "not owned");
+            if (c.TimeLocked) return Str.Join(Str.Locked, Str.Clean(c.TimeLockInfoMessage));
+            if (!c.PlayerOwnsChapter) return Str.NotOwned;
             switch (c.ChapterState.ToString())
             {
-                case "LOCKED": return Str.Join(Str.T("ACCESSIBILITY_ENH_LOCKED", "locked"), Str.Clean(c.UnlockChapterText));
-                case "COMPLETED": return Str.T("ACCESSIBILITY_ENH_COMPLETED", "completed");
+                case "LOCKED": return Str.Join(Str.Locked, Str.Clean(c.UnlockChapterText));
+                case "COMPLETED": return Str.Completed;
             }
             return null;
         }
@@ -94,7 +94,7 @@ namespace HSAEnhanced
                 var mission = m;
                 var state = mission.MissionState.ToString();
                 var label = Str.Join(n + ". " + ScenarioName(mission.ScenarioId),
-                    state == "LOCKED" ? Str.T("ACCESSIBILITY_ENH_LOCKED", "locked") : state == "COMPLETED" ? Str.T("ACCESSIBILITY_ENH_COMPLETED", "completed") : null);
+                    state == "LOCKED" ? Str.Locked : state == "COMPLETED" ? Str.Completed : null);
                 found.Add(new GameButton { Target = d, Label = label, Click = () => Play(d, mission) });
                 n++;
             }
@@ -124,7 +124,7 @@ namespace HSAEnhanced
             var id = mission.ScenarioId;
             if (mission.MissionState.ToString() == "LOCKED")
             {
-                AccessibilityMgr.OutputNotification(Str.T("ACCESSIBILITY_ENH_LOCKED", "locked"));
+                AccessibilityMgr.OutputNotification(Str.Locked);
                 return;
             }
             var config = AdventureConfig.Get();

@@ -30,11 +30,11 @@ namespace HSAEnhanced
         static string Flags(GameModeButtonDataModel b)
         {
             return Str.Join(
-                b.IsNew ? Str.T("ACCESSIBILITY_ENH_NEW", "new") : null,
-                b.IsEarlyAccess ? Str.T("ACCESSIBILITY_ENH_EARLY_ACCESS", "early access") : null,
-                b.IsBeta ? Str.T("ACCESSIBILITY_ENH_BETA", "beta") : null,
-                b.IsDownloading ? Str.T("ACCESSIBILITY_ENH_DOWNLOADING", "downloading") :
-                    b.IsDownloadRequired ? Str.T("ACCESSIBILITY_ENH_DOWNLOAD_REQUIRED", "download required") : null);
+                b.IsNew ? Str.Word("GLUE_COLLECTION_CARD_NEW") : null,
+                b.IsEarlyAccess ? Str.Word("GLUE_GAME_MODES_POPUP_EARLY_ACCESS") : null,
+                b.IsBeta ? Str.Word("GLUE_GAME_MODES_POPUP_BETA") : null,
+                b.IsDownloading ? Str.Word("GLUE_TOOLTIP_DOWNLOAD_HEADER") :
+                    b.IsDownloadRequired ? Str.Word("GLUE_GAME_MODE_TOOLTIP_DOWNLOAD_REQUIRED_TITLE") : null);
         }
 
         static void Choose(AccessibleComponent scene, GameModeButtonDataModel b)
@@ -49,16 +49,17 @@ namespace HSAEnhanced
                     AccessibilityMgr.Output(scene, string.IsNullOrEmpty(reason) ? Str.Clean(b.Description) : Str.Clean(reason));
                     return;
                 }
-                var play = Ref.Get<PegUIElement>(display, "m_playButton");
+                var play = Ui.FieldOfType<PlayButton>(display);
                 if (play != null) play.TriggerRelease();
             }
             catch (Exception e) { Log.Error(e); }
         }
 
+        // the game's own back (Escape), else the screen's back button
         static void ClickBack()
         {
-            var back = Ref.Get<PegUIElement>(GameModeDisplay.Get(), "m_backButton");
-            if (back != null) back.TriggerRelease();
+            var display = GameModeDisplay.Get();
+            Back.Go(null, display == null ? null : display.gameObject);
         }
     }
 }

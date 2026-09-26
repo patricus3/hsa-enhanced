@@ -34,12 +34,12 @@ namespace HSAEnhanced
             int mission;
             var wing = WingOf(coin, out mission);
             if (wing == null) return null;
-            if (!Ref.Get<bool>(wing, "m_Owned")) return Str.T("ACCESSIBILITY_ENH_NOT_OWNED", "not owned");
-            if (Ref.Get<bool>(wing, "m_Locked") || !Ref.Get<bool>(wing, "m_Playable")) return Str.T("ACCESSIBILITY_ENH_LOCKED", "locked");
+            if (!Ref.Get<bool>(wing, "m_Owned")) return Str.NotOwned;
+            if (Ref.Get<bool>(wing, "m_Locked") || !Ref.Get<bool>(wing, "m_Playable")) return Str.Locked;
             bool available = true;
             try { available = mission == 0 || AdventureConfig.IsMissionAvailable(mission); } catch { }
-            if (!available) return Str.T("ACCESSIBILITY_ENH_LOCKED", "locked");
-            if (Ref.Field(coin.GetType(), "m_Enabled") != null && !Ref.Get<bool>(coin, "m_Enabled")) return Str.T("ACCESSIBILITY_ENH_UNAVAILABLE", "unavailable");
+            if (!available) return Str.Locked;
+            if (Ref.Field(coin.GetType(), "m_Enabled") != null && !Ref.Get<bool>(coin, "m_Enabled")) return Str.Unavailable;
             return null;
         }
 

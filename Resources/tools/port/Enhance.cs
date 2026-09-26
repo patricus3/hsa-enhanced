@@ -58,11 +58,11 @@ static class Enhance
     static readonly Site[] Sites =
     {
         // hub main menu: HSA's hardcoded options + every other button the game shows;
-        // gets the Box fields HSA's hub code already handles, read from its IL here
+        // gets the Box fields each of HSA's hub methods presses, read from its IL here
         new("Accessibility.AccessibleHub", "SetupMainMenu", "AfterHubMenu", (il, m, hook, o) =>
         {
             o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldfld, F(m, "m_mainMenu")));
-            o.Add(il.Create(OpCodes.Ldstr, string.Join(",", FieldsRead(m.DeclaringType, "Box"))));
+            o.Add(il.Create(OpCodes.Ldstr, FieldsPressed(m.DeclaringType, "Box")));
             o.Add(il.Create(OpCodes.Call, hook));
         }),
         // game modes menu: rebuilt from the game's own list of game modes
@@ -95,6 +95,44 @@ static class Enhance
         }, AtStart: true),
         // adventure chooser: every adventure and mode the game shows (HSA has a fixed list)
         new("Accessibility.AccessibleAdventureScene", "SetupAndReadChooseAdventureMenu", "ChooseAdventureMenu", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // the Play screen (ranked / casual, friendly challenge): laid out as the game shows it
+        new("DeckPickerTrayDisplay", "RankedOnDeckPickerTrayDisplayReady", "PlayScreenReady", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("DeckPickerTrayDisplay", "FriendlyOnDeckPickerTrayDisplayReady", "PlayScreenReady", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // adventures and practice: the deck tray and the opponent tray, the same way
+        new("Accessibility.AccessibleAdventureScene", "OnDeckPickerTrayDisplayReady", "AdventureDeckTrayReady", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleAdventureScene", "OnPracticePickerTrayDisplayShown", "OpponentTrayShown", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // the game's format picker popup, read from its own buttons
+        new("Accessibility.AccessibleFormatTypePickerPopup", "ReadPopup", "FormatPickerOpened", (il, m, hook, o) =>
         {
             var original = m.Body.Instructions[0];
             o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
@@ -197,16 +235,48 @@ static class Enhance
         return string.Join("|", table);
     }
 
-    // Fields of `owner` read anywhere in `t` (its lambdas and closures included)
-    static SortedSet<string> FieldsRead(TypeDefinition t, string owner)
+    // "Method=field+field|..." for each method of `t` (lambdas included): the fields of `owner` it
+    // reads itself or through the methods of `t` it calls or hands on as delegates. An HSA menu
+    // option runs one of these methods; the field is the game's button it stands for.
+    static string FieldsPressed(TypeDefinition t, string owner)
     {
-        var names = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var type in new[] { t }.Concat(Analyze.AllTypes(t.Module).Where(x => x.DeclaringType != null && IsInside(x, t))))
-            foreach (var me in type.Methods.Where(x => x.HasBody))
-                foreach (var i in me.Body.Instructions)
-                    if ((i.OpCode == OpCodes.Ldfld || i.OpCode == OpCodes.Ldflda) && i.Operand is FieldReference f && f.DeclaringType.FullName == owner)
-                        names.Add(f.Name);
-        return names;
+        var methods = new[] { t }.Concat(Analyze.AllTypes(t.Module).Where(x => x.DeclaringType != null && IsInside(x, t)))
+            .SelectMany(x => x.Methods).Where(x => x.HasBody).ToList();
+        var mine = new HashSet<MethodDefinition>(methods);
+        var direct = new Dictionary<MethodDefinition, List<string>>();
+        var calls = new Dictionary<MethodDefinition, List<MethodDefinition>>();
+        foreach (var me in methods)
+        {
+            direct[me] = new List<string>(); calls[me] = new List<MethodDefinition>();
+            foreach (var i in me.Body.Instructions)
+            {
+                if ((i.OpCode == OpCodes.Ldfld || i.OpCode == OpCodes.Ldflda) && i.Operand is FieldReference f && f.DeclaringType.FullName == owner && !direct[me].Contains(f.Name))
+                    direct[me].Add(f.Name);
+                if ((i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Ldftn) && i.Operand is MethodReference r)
+                {
+                    MethodDefinition d = null;
+                    try { d = r.Resolve(); } catch { }
+                    if (d != null && mine.Contains(d)) calls[me].Add(d);
+                }
+            }
+        }
+        var entries = new List<string>();
+        foreach (var me in methods)
+        {
+            if (me.Name == ".ctor" || me.Name == ".cctor") continue;
+            var fields = new List<string>();
+            var seen = new HashSet<MethodDefinition>();
+            var todo = new Queue<MethodDefinition>(); todo.Enqueue(me);
+            while (todo.Count > 0)
+            {
+                var x = todo.Dequeue();
+                if (!seen.Add(x)) continue;
+                foreach (var f in direct[x]) if (!fields.Contains(f)) fields.Add(f);
+                foreach (var c in calls[x]) todo.Enqueue(c);
+            }
+            if (fields.Count > 0) entries.Add(me.Name + "=" + string.Join("+", fields));
+        }
+        return string.Join("|", entries.Distinct());
     }
 
     static bool IsInside(TypeDefinition x, TypeDefinition outer)

@@ -63,16 +63,16 @@ namespace HSAEnhanced
         {
             var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
             var dm = Model(m_widget);
-            m_menu = new AccessibleMenu(this, dm == null ? "" : Str.Clean(dm.Name), Close);
+            m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, dm == null ? "" : Str.Clean(dm.Name), Close));
             if (dm != null)
             {
                 if (dm.IsClosed) m_menu.AddOption(Str.Clean(dm.ClosedReason), () => Output(Str.Clean(dm.ClosedReason)));
                 else if (!dm.IsAllRewardsOwned)
-                    m_menu.AddOption(() => Str.T("ACCESSIBILITY_ENH_LD_DRAW", "Draw for {0}", PriceText(dm)), Draw);
+                    m_menu.AddOption(() => Str.Join(Str.Word("GLUE_LUCKY_DRAW_LEGAL_POPUP_PULL"), Str.Game("GLUE_LUCKY_DRAW_REQUIRED_AMOUNT_SINGLE", PriceText(dm)) ?? PriceText(dm)), Draw);
                 AccessibleMenu.GetTextDelegate owned = () =>
                 {
                     var m = Model(m_widget);
-                    return m == null ? "" : Str.T("ACCESSIBILITY_ENH_LD_OWNED_COUNT", "{0} of {1} rewards owned", m.OwnedRewardCount, m.Rewards == null ? 0 : m.Rewards.Count);
+                    return m == null ? "" : Str.Join(Str.Word("GLUE_LUCKY_COLLECTED"), m.OwnedRewardCount + "/" + (m.Rewards == null ? 0 : m.Rewards.Count));
                 };
                 m_menu.AddOption(owned, () => Output(owned()));
                 if (!string.IsNullOrEmpty(Str.Clean(dm.TimeLeft)))
@@ -85,13 +85,13 @@ namespace HSAEnhanced
                     {
                         var reward = r;
                         if (reward == null) continue;
-                        var label = Str.Join(Str.Clean(reward.Name), reward.IsPurchased ? Str.T("ACCESSIBILITY_ENH_OWNED", "owned") : null);
+                        var label = Str.Join(Str.Clean(reward.Name), reward.IsPurchased ? Str.Word("GLUE_LUCKY_COLLECTED") : null);
                         var details = Str.Join(Str.Clean(reward.Name), Str.Clean(reward.Description),
                                                reward.RewardList == null ? null : Str.Clean(reward.RewardList.Description));
                         m_menu.AddOption(label, () => Output(details));
                     }
             }
-            m_menu.AddOption(Str.Game("GLOBAL_BACK") ?? "Back", Close);
+            m_menu.AddOption(Str.Back, Close);
             m_menu.SetIndex(Math.Min(keep, m_menu.GetNumItems() - 1));
             m_signature = Signature();
         }

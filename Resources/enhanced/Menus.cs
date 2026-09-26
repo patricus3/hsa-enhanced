@@ -28,7 +28,16 @@ namespace HSAEnhanced
             return x;
         }
 
+        readonly Dictionary<object, Component> m_targets = new Dictionary<object, Component>();
+
         internal bool IsOurs(object option) { return m_added.Contains(option); }
+
+        // the game's button one of our options presses
+        internal Component TargetOf(object option)
+        {
+            Component c;
+            return m_targets.TryGetValue(option, out c) ? c : null;
+        }
 
         internal bool HasAdded { get { return m_added.Count > 0; } }
 
@@ -53,7 +62,7 @@ namespace HSAEnhanced
             var list = MenuEdit.List(menu);
             if (list == null) return false;
             // HSA cleared or refilled the menu itself: what we added before is gone
-            foreach (var o in m_added) if (!list.Contains(o)) { m_added.Clear(); m_applied = null; break; }
+            foreach (var o in m_added) if (!list.Contains(o)) { m_added.Clear(); m_targets.Clear(); m_applied = null; break; }
             if (sig == m_applied) { m_pending = null; return false; }
             if (!immediate && sig != m_pending) { m_pending = sig; return false; }
             m_pending = null;
@@ -65,6 +74,8 @@ namespace HSAEnhanced
 
             foreach (var o in m_added) list.Remove(o);
             m_added = MenuEdit.Insert(menu, position(), buttons);
+            m_targets.Clear();
+            for (int i = 0; i < m_added.Count && i < buttons.Count; i++) m_targets[m_added[i]] = buttons[i].Target;
             m_applied = sig;
             Log.Once("menu '" + Ref.Get(menu, "m_menuName") + "' (" + TypeOf(Ref.Get(menu, "m_parent")) + ") has " + list.Count + " options, added: " + GameButton.Describe(buttons));
 
@@ -130,7 +141,7 @@ namespace HSAEnhanced
         {
             var parent = Owner(menu);
             if (parent is AccessibleHub) return;                 // HubMenu takes care of it
-            if (parent is FallbackUI) return;                     // ours, built from the screen already
+            if (parent is FallbackUI || parent is AccessiblePlayScreen) return;   // ours, built from the screen already
             var root = parent as Component;
             s_open = menu;
             if (GameState.Get() == null)
@@ -234,7 +245,7 @@ namespace HSAEnhanced
             var menu = s_open;
             if (menu == null || GameState.Get() != null || !Engine.Enabled) return;
             var parent = Owner(menu);
-            if (parent == null || parent is AccessibleHub || parent is FallbackUI || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
+            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is AccessiblePlayScreen || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
             if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), false);
@@ -266,6 +277,8 @@ namespace HSAEnhanced
                 if (hasBack && Labels.IsBack(b.Label)) continue;     // the menu goes back already
                 if (!Labels.SimilarToAny(own, b.Label)) { own.Add(b.Label); buttons.Add(b); }
             }
+            // in the order the screen shows them
+            Ui.SortByScreen(buttons);
             // before a closing Back / Cancel option, if the menu ends with one
             extra.Update(menu, buttons, () =>
             {
@@ -277,19 +290,16 @@ namespace HSAEnhanced
         }
 
         // Buttons the menu's own options press already, recognised by identity (any language):
-        // the game modes screen's confirm button (choosing a mode presses it) and its back button
+        // the game modes screen's confirm button (choosing a mode presses it); its back button is
+        // left out as a back button
         static HashSet<GameObject> CoveredTargets()
         {
             var set = new HashSet<GameObject>();
             try
             {
                 var gm = GameModeDisplay.Get();
-                if (gm != null)
-                    foreach (var f in new[] { "m_playButton", "m_backButton" })
-                    {
-                        var c = Ui.Resolve(Ref.Get(gm, f));
-                        if (c != null && c) set.Add(c.gameObject);
-                    }
+                var play = gm == null ? null : Ui.FieldOfType<PlayButton>(gm);
+                if (play != null) set.Add(play.gameObject);
             }
             catch { }
             return set;
@@ -385,7 +395,7 @@ namespace HSAEnhanced
                 Log.Info("back: nothing to go back to");
             }
             catch (Exception e) { Log.Error(e); }
-            AccessibilityMgr.OutputNotification(Str.T("ACCESSIBILITY_ENH_NO_BACK", "There is nothing to go back to here"));
+            AccessibilityMgr.OutputNotification(Str.Join(Str.Back, Str.Unavailable));
         }
     }
 }

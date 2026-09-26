@@ -87,7 +87,7 @@ namespace HSAEnhanced
             var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
             var model = Model;
             var title = model != null && !string.IsNullOrEmpty(model.Name) ? Str.Clean(model.Name) : Title();
-            m_menu = new AccessibleMenu(this, title, GoBack);
+            m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, title, GoBack));
             m_itemCount = 0;
 
             if (model != null && model.Items != null)
@@ -101,16 +101,16 @@ namespace HSAEnhanced
 
             if (model != null)
             {
-                AddInfo(() => model.TimeRemainingText, "GLUE_BLACK_MARKET_EVENT_END_TITLE", "Event ends in");
-                AddInfo(() => model.GraceTimeRemainingText, "GLUE_BLACK_MARKET_STORE_CLOSE_TITLE", "Market closes in");
-                if (model.HasUpcomingPriceRefresh) AddInfo(() => model.NextPriceRefreshText, "GLUE_BLACK_MARKET_PRICE_REFRESH_TITLE", "Price update in");
-                if (model.HasUpcomingItemRefresh) AddInfo(() => model.NextItemRefreshText, "GLUE_BLACK_MARKET_ITEM_REFRESH_TITLE", "Item refresh in");
-                AddInfo(() => model.DailyEarnCapText, "GLUE_BLACK_MARKET_DAILY_EARN_CAP_TITLE", "Max daily earnings");
-                AddInfo(() => model.TotalPurchaseText, "GLUE_BLACK_MARKET_ITEM_NUM_PURCHASED", "Items purchased");
-                AddInfo(() => model.WalletStealingCurrencyPercentText, null, null);
-                AddInfo(() => model.WarModeRewardCurrencyMultiplierText, null, null);
+                AddInfo(() => model.TimeRemainingText, "GLUE_BLACK_MARKET_EVENT_END_TITLE");
+                AddInfo(() => model.GraceTimeRemainingText, "GLUE_BLACK_MARKET_STORE_CLOSE_TITLE");
+                if (model.HasUpcomingPriceRefresh) AddInfo(() => model.NextPriceRefreshText, "GLUE_BLACK_MARKET_PRICE_REFRESH_TITLE");
+                if (model.HasUpcomingItemRefresh) AddInfo(() => model.NextItemRefreshText, "GLUE_BLACK_MARKET_ITEM_REFRESH_TITLE");
+                AddInfo(() => model.DailyEarnCapText, "GLUE_BLACK_MARKET_DAILY_EARN_CAP_TITLE");
+                AddInfo(() => model.TotalPurchaseText, "GLUE_BLACK_MARKET_ITEM_NUM_PURCHASED");
+                AddInfo(() => model.WalletStealingCurrencyPercentText, null);
+                AddInfo(() => model.WarModeRewardCurrencyMultiplierText, null);
             }
-            m_menu.AddOption(() => Str.T("ACCESSIBILITY_ENH_BM_BALANCE", "You have {0} Bloodstones", Balance()), () => Output(Str.T("ACCESSIBILITY_ENH_BM_BALANCE", "You have {0} Bloodstones", Balance())));
+            m_menu.AddOption(() => Balance().ToString(), () => Output(Balance().ToString()));
 
             // anything else the page shows (info, war mode, play, close, ...), found on screen
             foreach (var b in Ui.ClickablesUnder(m_page.gameObject, IsItemOrPopup))
@@ -118,27 +118,27 @@ namespace HSAEnhanced
                 var button = b;
                 m_menu.AddOption(button.Label, () => { try { button.Click(); } catch (Exception e) { Log.Error(e); } });
             }
-            m_menu.AddOption(Str.Game("GLOBAL_BACK") ?? "Back", GoBack);
+            m_menu.AddOption(Str.Back, GoBack);
 
             m_menu.SetIndex(Math.Min(keep, m_menu.GetNumItems() - 1));
             m_signature = Signature();
         }
 
-        void AddInfo(Func<string> value, string titleKey, string english)
+        void AddInfo(Func<string> value, string titleKey)
         {
             if (string.IsNullOrEmpty(Str.Clean(value()))) return;
             AccessibleMenu.GetTextDelegate text = () =>
             {
                 var v = Str.Clean(value());
                 if (titleKey == null) return v;
-                return Str.Join(Str.Game(titleKey) ?? english, v);
+                return Str.Join(Str.Game(titleKey), v);
             };
             m_menu.AddOption(text, () => Output(text()));
         }
 
         static string Title()
         {
-            return Str.Game("GLUE_BLACK_MARKET_SUB_TITLE") ?? Str.Game("GLUE_TOOLTIP_BUTTON_BLACK_MARKET_HEADLINE") ?? "Black Market";
+            return Str.Word("GLUE_BLACK_MARKET_SUB_TITLE", "GLUE_TOOLTIP_BUTTON_BLACK_MARKET_HEADLINE");
         }
 
         internal static long Balance()
@@ -149,27 +149,26 @@ namespace HSAEnhanced
 
         internal static string Price(float amount)
         {
-            return Str.T("ACCESSIBILITY_ENH_BM_PRICE", "{0} Bloodstones", Mathf.RoundToInt(amount));
+            return Mathf.RoundToInt(amount).ToString();
         }
 
         internal static string ItemLabel(BlackMarketItemDataModel item)
         {
             var parts = new List<string> { Str.Clean(item.DisplayName) };
-            if (item.VisualState == BlackMarketItemVisualState.PendingReveal) parts.Add(Str.T("ACCESSIBILITY_ENH_BM_NOT_REVEALED", "not revealed yet"));
-            if (item.IsLocked) parts.Add(Str.T("ACCESSIBILITY_ENH_LOCKED", "locked"));
+            if (item.IsLocked) parts.Add(Str.Locked);
             if (item.SinglePrice != null) parts.Add(Price(item.SinglePrice.Amount));
             if (item.HasNewPrice && !string.IsNullOrEmpty(item.PriceAdjustmentText)) parts.Add(Str.Clean(item.PriceAdjustmentText));
             parts.Add(Stock(item));
-            if (item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_DECLINED) parts.Add(Str.Game("GLUE_BLACK_MARKET_ITEM_OFFER_DECLINED") ?? "Offer declined");
+            if (item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_DECLINED) parts.Add(Str.Word("GLUE_BLACK_MARKET_ITEM_OFFER_DECLINED"));
             return Str.Join(parts.ToArray());
         }
 
         internal static string Stock(BlackMarketItemDataModel item)
         {
             if (item.ItemStock == BlackMarketEventManager.UnlimitedItemStock) return null;
-            if (item.ItemStock <= 0) return Str.Game("GLUE_BLACK_MARKET_ITEM_SOLD_OUT") ?? "Sold out";
+            if (item.ItemStock <= 0) return Str.Word("GLUE_BLACK_MARKET_ITEM_SOLD_OUT");
             if (!string.IsNullOrEmpty(item.ItemStockText)) return Str.Clean(item.ItemStockText);
-            return Str.Game("GLUE_BLACK_MARKET_ITEM_NUM_AVAILABLE", item.ItemStock) ?? item.ItemStock + " in stock";
+            return Str.Game("GLUE_BLACK_MARKET_ITEM_NUM_AVAILABLE", item.ItemStock) ?? item.ItemStock.ToString();
         }
 
         // What makes the menu different: items and their state, and the page's buttons
@@ -196,9 +195,9 @@ namespace HSAEnhanced
 
         void OpenItem(BlackMarketItemDataModel item)
         {
-            if (item.IsLocked) { Output(Str.T("ACCESSIBILITY_ENH_LOCKED", "locked")); return; }
+            if (item.IsLocked) { Output(Str.Locked); return; }
             var tile = FindTile(item);
-            if (tile == null) { Output(Str.T("ACCESSIBILITY_ENH_BM_CANNOT_OPEN", "This item cannot be opened right now")); return; }
+            if (tile == null) { Output(Str.Unavailable); return; }
             m_expectPopupUntil = Time.unscaledTime + 5f;
             Ui.Press(tile);
         }
@@ -341,7 +340,7 @@ namespace HSAEnhanced
             AccessibleMenu.GetTextDelegate price = () =>
             {
                 var i = Item;
-                return i == null || i.TotalPrice == null ? "" : Str.T("ACCESSIBILITY_ENH_BM_TOTAL_PRICE", "Price: {0}", AccessibleBlackMarket.Price(i.TotalPrice.Amount));
+                return i == null || i.TotalPrice == null ? "" : Str.Join(Str.Word("GLUE_STORE_SUMMARY_PRICE_HEADLINE"), AccessibleBlackMarket.Price(i.TotalPrice.Amount));
             };
             m_menu.AddOption(price, () => Output(price()));
             var stock = AccessibleBlackMarket.Stock(item);
@@ -350,22 +349,22 @@ namespace HSAEnhanced
             // quantity, when more than one can be bought
             if (item.ItemStock != 1)
             {
-                AccessibleMenu.GetTextDelegate qty = () => Str.T("ACCESSIBILITY_ENH_BM_QUANTITY", "Quantity: {0}", Item == null ? 0 : Item.PurchaseQuantity);
+                AccessibleMenu.GetTextDelegate qty = () => Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
                 m_menu.AddOption(qty, () => Output(qty()));
-                m_menu.AddOption(Str.T("ACCESSIBILITY_ENH_BM_MORE", "Increase quantity"), () => Adjust("INCREASE_PURCHASE_QUANTITY", qty, price));
-                m_menu.AddOption(Str.T("ACCESSIBILITY_ENH_BM_LESS", "Decrease quantity"), () => Adjust("DECREASE_PURCHASE_QUANTITY", qty, price));
+                m_menu.AddOption("+", () => Adjust("INCREASE_PURCHASE_QUANTITY", qty, price));
+                m_menu.AddOption("-", () => Adjust("DECREASE_PURCHASE_QUANTITY", qty, price));
             }
 
             if (item.ItemStock != 0 && !item.IsLocked)
-                m_menu.AddOption(Str.T("ACCESSIBILITY_ENH_BM_BUY", "Buy for {0}", AccessibleBlackMarket.Price(item.TotalPrice == null ? 0 : item.TotalPrice.Amount)),
+                m_menu.AddOption(Str.Join(Str.Word("GLOBAL_BUTTON_BUY", "GLUE_STORE_BUY_TEXT"), AccessibleBlackMarket.Price(item.TotalPrice == null ? 0 : item.TotalPrice.Amount)),
                     () => Send("PRODUCTBUYBUTTON_CLICKED"));
 
             // haggling is offered during the grace period, once per item
             var mgr = BlackMarketEventManager.Get();
             if (mgr != null && mgr.IsCurrentEventInGracePeriod && item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_NONE && item.ItemStock != 0)
-                m_menu.AddOption(Str.Game("GLUE_BLACK_MARKET_HAGGLE_OFFER") ?? "Offer", () => Send("BLACK_MARKET_HAGGLE_BUTTON_CLICKED"));
+                m_menu.AddOption(Str.Word("GLUE_BLACK_MARKET_HAGGLE_OFFER"), () => Send("BLACK_MARKET_HAGGLE_BUTTON_CLICKED"));
 
-            m_menu.AddOption(Str.Game("GLOBAL_BACK") ?? "Back", Close);
+            m_menu.AddOption(Str.Back, Close);
         }
 
         void Adjust(string ev, AccessibleMenu.GetTextDelegate qty, AccessibleMenu.GetTextDelegate price)

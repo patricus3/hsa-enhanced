@@ -15,20 +15,8 @@ namespace HSAEnhanced
         // Texts shown under `root` that are not on buttons, in reading order
         internal static List<string> Texts(GameObject root)
         {
-            var found = new List<KeyValuePair<float, string>>();
-            var seen = new HashSet<string>();
-            if (root == null) return new List<string>();
-            foreach (var ut in root.GetComponentsInChildren<UberText>(false))
-            {
-                if (ut == null || !ut.isActiveAndEnabled) continue;
-                if (ut.GetComponentInParent<PegUIElement>() != null || ut.GetComponentInParent<Clickable>() != null) continue;
-                var s = Ui.ShownText(ut.Text);
-                if (s.Length == 0 || !seen.Add(s)) continue;
-                found.Add(new KeyValuePair<float, string>(Ui.ScreenOrderOf(ut), s));
-            }
-            found.Sort((a, b) => a.Key.CompareTo(b.Key));
             var result = new List<string>();
-            foreach (var kv in found) result.Add(kv.Value);
+            foreach (var kv in Ui.TextsUnder(root)) result.Add(kv.Value);
             return result;
         }
     }

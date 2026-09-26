@@ -10,8 +10,8 @@ namespace HSAEnhanced
     // here may throw into the game.
     public static class Hooks
     {
-        // end of AccessibleHub.SetupMainMenu(); hsaFields: the Box fields HSA's hub code reads
-        // (comma separated, found in its IL when the mod is built)
+        // end of AccessibleHub.SetupMainMenu(); hsaFields: "Method=field+field|..." the Box fields
+        // each of HSA's hub methods presses (found in its IL when the mod is built)
         public static void AfterHubMenu(object hub, object menu, string hsaFields)
         {
             try { HubMenu.AfterSetup(hub, menu as AccessibleMenu, hsaFields); }
@@ -57,6 +57,45 @@ namespace HSAEnhanced
         public static bool ChooseAdventureMenu(object scene)
         {
             try { return AdventureMenu.Build(scene); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's DeckPickerTrayDisplay.RankedOnDeckPickerTrayDisplayReady() and
+        // FriendlyOnDeckPickerTrayDisplayReady(); true: HSA's version is skipped
+        public static bool PlayScreenReady(object display)
+        {
+            try { return PlayScreen.Show(display as MonoBehaviour); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleAdventureScene.OnDeckPickerTrayDisplayReady(pages) and
+        // OnPracticePickerTrayDisplayShown(buttons): the adventure / practice deck tray and the
+        // practice opponent tray, read the same way; true: HSA's version is skipped
+        public static bool AdventureDeckTrayReady(object scene)
+        {
+            try { return PlayScreen.Show(DeckPickerTrayDisplay.Get()); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        public static bool OpponentTrayShown(object scene)
+        {
+            try { return PlayScreen.Show(PracticePickerTrayDisplay.Get()); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleFormatTypePickerPopup.ReadPopup(); true: HSA's version is skipped.
+        // The game's format picker is read from its own buttons (every format it offers, with its text)
+        public static bool FormatPickerOpened(object hsaPopup)
+        {
+            try
+            {
+                if (!Engine.Enabled) return false;
+                var widget = Ui.FieldOfType<Hearthstone.UI.Widget>(hsaPopup);
+                if (widget == null) return false;
+                Log.Info("format picker: read from its buttons");
+                FallbackWatcher.ShowPopup(widget.gameObject, hsaPopup);
+                return true;
+            }
             catch (Exception e) { Log.Error(e); return false; }
         }
 

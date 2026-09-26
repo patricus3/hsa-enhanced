@@ -49,12 +49,56 @@ namespace HSAEnhanced
             s_instance = host.AddComponent<FallbackWatcher>();
         }
 
+        // popups an HSA reader stood for, read here from their own buttons until they close
+        class Popup { internal FallbackUI Ui; internal GameObject Root; internal object Replaced; }
+        static readonly List<Popup> s_popups = new List<Popup>();
+
+        // a menu of what `root` shows (its buttons, and with `texts` its texts too, in reading
+        // order), in place of the HSA UI `replaced`
+        internal static void ShowPopup(GameObject root, object replaced, bool texts = false)
+        {
+            var hsa = replaced as AccessibleUI;
+            if (hsa != null) AccessibilityMgr.HideUI(hsa);
+            var ui = new FallbackUI("popup:" + root.GetInstanceID(), root, true, texts);
+            s_popups.Add(new Popup { Ui = ui, Root = root, Replaced = replaced });
+            AccessibilityMgr.ShowUI(ui);
+            ui.Start();
+        }
+
+        static void TickPopups()
+        {
+            for (int i = s_popups.Count - 1; i >= 0; i--)
+            {
+                var p = s_popups[i];
+                var w = p.Root == null ? null : p.Root.GetComponent<Widget>();
+                bool open = p.Root != null && p.Root.activeInHierarchy && (w == null || w.IsActive) && StillOpen(p.Replaced);
+                if (open) { p.Ui.Refresh(false); continue; }
+                s_popups.RemoveAt(i);
+                AccessibilityMgr.HideUI(p.Ui);
+            }
+        }
+
+        // HSA keeps its open popup reader in a static field of its class and clears it on close
+        static bool StillOpen(object replaced)
+        {
+            if (replaced == null) return true;
+            bool held = false;
+            foreach (var f in replaced.GetType().GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            {
+                if (!f.FieldType.IsInstanceOfType(replaced)) continue;
+                held = true;
+                if (ReferenceEquals(f.GetValue(null), replaced)) return true;
+            }
+            return !held;
+        }
+
         void Update()
         {
             if (Time.unscaledTime < m_next) return;
             m_next = Time.unscaledTime + 0.5f;
             try
             {
+                TickPopups();
                 MenuAugment.Tick();
                 Back.Tick();
                 Check();
@@ -155,12 +199,13 @@ namespace HSAEnhanced
         internal readonly string Key;
         readonly GameObject m_root;     // popup/dialog, or null for the whole screen
         readonly bool m_popup;
+        readonly bool m_texts;      // its texts are read as well (a panel of information)
         AccessibleMenu m_menu;
 
-        internal FallbackUI(string key, GameObject root, bool popup)
+        internal FallbackUI(string key, GameObject root, bool popup, bool texts = false)
         {
-            Key = key; m_root = root; m_popup = popup;
-            var title = popup ? PopupTitle(root) : (Book.Title() ?? Str.T("ACCESSIBILITY_ENH_SCREEN_MENU", "Screen menu"));
+            Key = key; m_root = root; m_popup = popup; m_texts = texts;
+            var title = popup ? PopupTitle(root) : (Book.Title() ?? "");
             m_menu = new AccessibleMenu(this, title, GoBack);
             Refresh(true);
         }
@@ -176,7 +221,7 @@ namespace HSAEnhanced
             if (buttons.Count == 0 && m_popup && m_root != null)
             {
                 var root = m_root;
-                buttons.Add(new GameButton { Target = root.transform, Label = Str.Game("GLOBAL_CONTINUE") ?? "Continue", Click = () => AccessibleInputMgr.Click(root) });   // no widget button on it: the virtual mouse
+                buttons.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => AccessibleInputMgr.Click(root) });   // no widget button on it: the virtual mouse
             }
             ExtraOptions.Of(m_menu).Update(m_menu, buttons, () => -1, immediate);
             if (MenuEdit.IndexOfText(m_menu, LocalizedText.SCREEN_GO_BACK) < 0)
@@ -196,6 +241,20 @@ namespace HSAEnhanced
         {
             var found = m_root != null ? Ui.ClickablesUnder(m_root, null) : Ui.ScreenButtons();
             found.RemoveAll(b => Labels.IsBack(b.Label));
+            if (m_texts && m_root != null)
+            {
+                var ui = this;
+                var labels = new List<string>();
+                foreach (var b in found) labels.Add(b.Label);
+                foreach (var t in Ui.TextsUnder(m_root))
+                {
+                    if (labels.Contains(t.Value)) continue;
+                    var text = t.Value;
+                    labels.Add(text);
+                    found.Add(new GameButton { Target = t.Key, Label = text, Click = () => AccessibilityMgr.Output(ui, text) });
+                }
+                Ui.SortByScreen(found);
+            }
             // an adventure book page: its chapters or missions from the game's data come first
             var book = m_root == null ? Book.Buttons() : null;
             if (book != null && book.Count > 0)
