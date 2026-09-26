@@ -56,6 +56,7 @@ static void RunPort(string wPath, string mPath, string outPath, string? refDir, 
     log.WriteLine($"enum constants rewritten: {ef.rewritten}, methods using HSA-added enum members: {ef.usesAddedMembers.Count}");
     foreach (var me in ef.usesAddedMembers) log.WriteLine($"  uses added enum member: {me.FullName}");
     var p = new Port(W, M, log);
+    p.TargetIsWindows = windows;
     foreach (var me in ef.usesAddedMembers) p.seeds.Add(me);
     p.LoadDiffSeeds("hunk_edit_seeds.txt", "hunk_added.txt");
     p.Select();

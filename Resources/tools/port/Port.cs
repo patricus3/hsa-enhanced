@@ -52,6 +52,8 @@ class Port
     }
     readonly HashSet<MethodDefinition> staticFlips = new();
     public readonly Dictionary<MethodDefinition, string> reasons = new();
+    // the target is the Windows build of the game (then W's platform code is right)
+    public bool TargetIsWindows;
 
     public Port(ModuleDefinition w, ModuleDefinition m, TextWriter log)
     {
@@ -225,6 +227,7 @@ class Port
             }
         }
         log.WriteLine($"select: {round} rounds, H items {H.Count}, edited methods {edited.Count}");
+        if (!TargetIsWindows) KeepMacWhereWindowsOnly();
 
         // forward closure
         var work = new Queue<IMemberDefinition>();
@@ -312,6 +315,80 @@ class Port
     {
         yield return t;
         foreach (var n in t.NestedTypes) foreach (var x in AllNested(n)) yield return x;
+    }
+
+
+    // ---------- Mac safety net ----------
+    // A transplanted game method brings W's (Windows) body. When that body - directly or
+    // through non-HSA W-only game classes it needs - uses something the Mac build does
+    // not have (Windows anti-cheat, System.Timers, Thread.Abort, TouchScreenKeyboard ...),
+    // the Mac method is kept instead. HSA edits lost that way are reported.
+    readonly Dictionary<TypeDefinition, string?> winOnlyCache = new();
+
+    string? MissingOnMac(MemberReference r)
+    {
+        switch (r)
+        {
+            case GenericInstanceMethod gim:
+                return MissingOnMac(gim.ElementMethod) ?? gim.GenericArguments.Select(MissingOnMac).FirstOrDefault(x => x != null);
+            case GenericInstanceType git:
+                return MissingOnMac(git.ElementType) ?? git.GenericArguments.Select(MissingOnMac).FirstOrDefault(x => x != null);
+            case TypeSpecification ts: return MissingOnMac(ts.ElementType);
+            case GenericParameter: return null;
+        }
+        if (Shims.Handled.Contains(r.FullName)) return null;
+        var dt = r is TypeReference t0 ? t0 : r.DeclaringType;
+        if (dt == null) return null;
+        var et = dt.GetElementType();
+        if (et is GenericParameter) return null;
+        if (et.Scope == W || (et is TypeDefinition td0 && td0.Module == W))
+        {
+            var td = et as TypeDefinition ?? et.Resolve();
+            if (td == null || !wOnlyTypes.Contains(td) || InH(td) || IsCompilerGenerated(td)) return null;
+            return MissingInWOnlyType(TopLevelWOnly(td));
+        }
+        try
+        {
+            object? res = r switch
+            {
+                TypeReference tr => M.ImportReference(tr).Resolve(),
+                MethodReference mr => M.ImportReference(mr).Resolve(),
+                FieldReference fr => M.ImportReference(fr).Resolve(),
+                _ => ""
+            };
+            return res == null ? r.FullName : null;
+        }
+        catch (AssemblyResolutionException e) { return "assembly " + e.AssemblyReference.Name; }
+        catch (Exception) { return null; }
+    }
+
+    string? MissingInWOnlyType(TypeDefinition t)
+    {
+        if (winOnlyCache.TryGetValue(t, out var c)) return c;
+        winOnlyCache[t] = null;   // cycles
+        string? found = null;
+        foreach (var x in AllNested(t))
+        {
+            foreach (var r in TypeRefs(x)) { found ??= MissingOnMac(r); }
+            foreach (var m in x.Methods) foreach (var r in BodyRefs(m).Concat(SigRefs(m))) { if (found != null) break; found = MissingOnMac(r); }
+            if (found != null) break;
+        }
+        return winOnlyCache[t] = found == null ? null : $"{t.FullName} -> {found}";
+    }
+
+    void KeepMacWhereWindowsOnly()
+    {
+        int kept = 0;
+        foreach (var m in edited.ToList())
+        {
+            string? miss = null;
+            foreach (var r in BodyRefs(m).Concat(SigRefs(m))) { miss = MissingOnMac(r); if (miss != null) break; }
+            if (miss == null) continue;
+            edited.Remove(m); kept++;
+            bool hsa = seeds.Contains(m) || BodyRefs(m).SelectMany(WDefs).Any(InH);
+            log.WriteLine($"  {(hsa ? "WARNING: HSA edit dropped, " : "")}kept Mac version of {m.FullName}: W body needs {miss}");
+        }
+        log.WriteLine($"mac safety net: {kept} methods keep their Mac body (W's needs Windows-only or stripped APIs)");
     }
 
     // ---------- phase B: create shells ----------

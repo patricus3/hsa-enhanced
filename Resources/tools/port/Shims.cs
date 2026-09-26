@@ -6,6 +6,18 @@ using Mono.Cecil.Cil;
 // Assembly-CSharp itself), written in IL on top of members the Mac BCL keeps.
 static class Shims
 {
+    // BCL members that Apply() replaces (so they are not "missing on Mac" for the transplant)
+    public static readonly HashSet<string> Handled = new()
+    {
+        "System.String[] System.Text.RegularExpressions.Regex::Split(System.String,System.String)",
+        "System.DateTime System.DateTime::get_Today()",
+        "System.String System.Environment::GetEnvironmentVariable(System.String,System.EnvironmentVariableTarget)",
+        "System.Void System.Environment::SetEnvironmentVariable(System.String,System.String,System.EnvironmentVariableTarget)",
+        "System.Void System.IO.File::WriteAllLines(System.String,System.String[])",
+        "System.EnvironmentVariableTarget",
+        "System.Net.WebClient",
+    };
+
     public static void Apply(ModuleDefinition M, IEnumerable<MethodDefinition> touched, TextWriter log, bool windows = false)
     {
         var corlib = M.AssemblyResolver.Resolve((AssemblyNameReference)M.TypeSystem.CoreLibrary).MainModule;
