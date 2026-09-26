@@ -78,7 +78,8 @@ cp -R "$WORK/hsa/patch/Accessibility/Sounds" "$O/Accessibility/"
 cp "$WORK/hsa/patch/Accessibility/hsa_manifest.json" "$O/Accessibility/" 2>/dev/null || true
 for d in "$WORK"/hsa/patch/Strings/*/; do
     loc=$(basename "$d"); [ -f "$d/ACCESSIBILITY.txt" ] || continue
-    mkdir -p "$O/Strings/$loc" && cp "$d/ACCESSIBILITY.txt" "$O/Strings/$loc/"done
+    mkdir -p "$O/Strings/$loc" && cp "$d/ACCESSIBILITY.txt" "$O/Strings/$loc/"
+done
 cp "$ROOT/loader/libhsaloader.dylib" "$ROOT/voiceover/libHSAVoiceOver.dylib" "$ROOT/voiceover/prism/libprism.dylib" \
    "$ROOT/voiceover/prism/LICENSE-prism-MPL-2.0.txt" "$STAGE/"
 shasum -a 256 "$WORK/vanilla-Assembly-CSharp.dll" | awk '{print $1}' > "$STAGE/built_for.sha256"
