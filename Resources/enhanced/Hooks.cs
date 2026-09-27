@@ -116,6 +116,14 @@ namespace HSAEnhanced
             catch (Exception e) { Log.Error(e); return false; }
         }
 
+        // start of HSA's AccessibleGameplay.ClickCard(bool); true: not clicked now (the pointer is
+        // not on the hand card being read yet; HandClick clicks once it is)
+        public static bool BeforeClickCard(object gameplay, bool performingDeckAction)
+        {
+            try { return HandClick.Before(gameplay, performingDeckAction); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
         // start of AccessibilityMgr.Output(AccessibleComponent speaker, string, bool); our own
         // fallback menu speaking does not count as the screen speaking
         public static void OnSpeech(object speaker) { if (!(speaker is FallbackUI)) FallbackWatcher.Spoke(); }

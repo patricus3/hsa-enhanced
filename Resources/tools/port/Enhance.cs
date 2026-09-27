@@ -148,6 +148,15 @@ static class Enhance
             o.Add(il.Create(OpCodes.Brfalse, original));
             o.Add(il.Create(OpCodes.Ret));
         }, AtStart: true),
+        // a match: a hand card is clicked only once the pointer is on it (while the hand moves after a
+        // draw or discover HSA's click could land on the card next to it and play that one)
+        new("Accessibility.AccessibleGameplay", "ClickCard", "BeforeClickCard", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true, Params: "System.Boolean"),
         // what HSA says, and when it gives a screen focus: a screen that stays silent when it
         // gets focus handles nothing, and the fallback menu takes it over
         new("Accessibility.AccessibilityMgr", "Output", "OnSpeech", (il, m, hook, o) =>

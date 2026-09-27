@@ -16,7 +16,7 @@ This project is not affiliated with Blizzard Entertainment or with the Hearthsto
 - **Credits**: each year's credits by section, roles with their names, the year buttons, and every credits card as it appears.
 - **A way back everywhere**: menus without one get the game's own back navigation; a back that does nothing is followed up; as a last resort Back returns to the main menu.
 - **Screens Hearthstone Access does not know** get a menu of what they show.
-- **Fixes**: HSA changes the transplant used to lose (operator-only edits, early returns) are carried over, which fixes e.g. adventure mission screens and the new-year set rotation that kept the Shop, Black Market and lucky draw hidden; a second "find game" request is no longer sent.
+- **Fixes**: HSA changes the transplant used to lose (operator-only edits, early returns) are carried over, which fixes e.g. adventure mission screens and the new-year set rotation that kept the Shop, Black Market and lucky draw hidden; a second "find game" request is no longer sent; a hand card is picked up only once the pointer is on it, so the card next to it is no longer played while the hand moves after a draw or discover.
 
 `--use-hsa-menus` (installer option) keeps Hearthstone Access's own menus; the other additions stay.
 
