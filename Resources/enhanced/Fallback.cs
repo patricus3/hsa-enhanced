@@ -66,6 +66,21 @@ namespace HSAEnhanced
             ui.Start();
         }
 
+        // The game's small button-list menus nobody made accessible (Options > Miscellaneous,
+        // Privacy, ...): read from their own buttons and header text while shown
+        static void TickButtonListMenus()
+        {
+            foreach (var m in UnityEngine.Object.FindObjectsByType<ButtonListMenu>(FindObjectsSortMode.None))
+            {
+                if (m == null || m is AccessibleUI || !m.IsShown() || !m.gameObject.activeInHierarchy) continue;
+                bool open = false;
+                foreach (var p in s_popups) if (p.Root == m.gameObject) { open = true; break; }
+                if (open) continue;
+                Log.Info("button list menu: " + m.GetType().Name + " read from its buttons");
+                ShowPopup(m.gameObject, null);     // its header is the popup's title
+            }
+        }
+
         static void TickPopups()
         {
             for (int i = s_popups.Count - 1; i >= 0; i--)
@@ -100,6 +115,8 @@ namespace HSAEnhanced
             try
             {
                 TickPopups();
+                TickButtonListMenus();
+                CreditsWatcher.Ensure();
                 SetRotation.Tick();
                 MenuAugment.Tick();
                 Back.Tick();
@@ -172,7 +189,7 @@ namespace HSAEnhanced
 
             // a screen with no HSA screen (or HSA's hub screen left over after leaving the hub)
             var screen = Ref.Field(Mgr, "s_curScreen")?.GetValue(null);
-            if (BlackMarketWatcher.Active > 0 || LuckyDrawWatcher.Active > 0) return;
+            if (BlackMarketWatcher.Active > 0 || LuckyDrawWatcher.Active > 0 || CreditsWatcher.Active > 0) return;
             if (screen == null || (screen is AccessibleHub && mode != SceneMgr.Mode.HUB) || Inert(screen as AccessibleScreen) || Silent(screen))
                 key = "screen:" + mode + ":" + (screen == null ? "" : screen.GetType().Name);
         }

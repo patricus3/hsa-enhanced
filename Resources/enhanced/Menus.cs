@@ -148,7 +148,9 @@ namespace HSAEnhanced
             if (GameState.Get() == null)
             {
                 MarkLocked(menu);
-                if (!Engine.Enabled) { }                          // --use-hsa-menus: HSA's options only
+                // a Death Knight deck's rune slots (HSA has none), with --use-hsa-menus too
+                if (Runes.IsEditDeckMenu(parent, menu)) AddScreenButtons(menu, Runes.Buttons(menu), true);
+                else if (!Engine.Enabled) { }                     // --use-hsa-menus: HSA's options only
                 // an adventure chapter's missions: named, nothing from the page added (its click area)
                 else if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) { }
                 else if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), true);
@@ -258,6 +260,8 @@ namespace HSAEnhanced
         // (lists included: buttons of a menu that are not under it in the scene)
         static List<GameButton> OwnerButtons(Component owner)
         {
+            var options = owner as OptionsMenu;
+            if (options != null) return OptionsScreen.Buttons(options);
             var found = Ui.ClickablesUnder(owner.gameObject, null);
             var labels = new HashSet<string>();
             foreach (var b in found) labels.Add(b.Label);
@@ -271,8 +275,15 @@ namespace HSAEnhanced
         internal static void Tick()
         {
             var menu = s_open;
-            if (menu == null || GameState.Get() != null || !Engine.Enabled) return;
+            if (menu == null || GameState.Get() != null) return;
             var parent = Owner(menu);
+            // the rune slots follow the deck (adding a runed card fills empty slots)
+            if (Runes.IsEditDeckMenu(parent, menu))
+            {
+                if (AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) AddScreenButtons(menu, Runes.Buttons(menu), false);
+                return;
+            }
+            if (!Engine.Enabled) return;
             if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
@@ -280,6 +291,12 @@ namespace HSAEnhanced
             if (root != null && root) AddScreenButtons(menu, OwnerButtons(root), false);
             else if (WidgetOf(parent) != null) AddScreenButtons(menu, Ui.ClickablesUnder(WidgetOf(parent).gameObject, null), false);
             else if (TakesScreenButtons(parent)) AddScreenButtons(menu, Ui.ScreenButtons(), false);
+        }
+
+        // The rune slots' labels right after one was changed
+        internal static void Refresh(AccessibleMenu menu)
+        {
+            if (Runes.IsEditDeckMenu(Owner(menu), menu)) AddScreenButtons(menu, Runes.Buttons(menu), true);
         }
 
         // Screens whose menus get the buttons of the whole screen. Not the Black Market, and not the
