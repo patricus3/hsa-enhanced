@@ -24,8 +24,8 @@ This project is not affiliated with Blizzard Entertainment or with the Hearthsto
 
 Ready-to-use packages are in [`release/`](release/). There are two versions:
 
-- **Hearthstone Access Enhanced** (this branch): **Hearthstone access enhanced for Windows.zip**, **Hearthstone access enhanced for Mac.zip**, source in **sourcecode.zip**. Both packages contain the same `Resources`; only the installer differs.
-- **Hearthstone Access for Mac** (plain port, the [`mac-port`](../../tree/mac-port) branch): **Hearthstone access for Mac.zip**, source in **sourcecode Mac port.zip**. Hearthstone Access exactly as on Windows, without the enhancements, speech through the macOS system voice.
+- **Hearthstone Access Enhanced** (this branch): **1 Hearthstone access enhanced for Windows.zip**, **2 Hearthstone access enhanced for Mac.zip**, source in **3 Hearthstone access enhanced sourcecode.zip**. Both packages contain the same `Resources`; only the installer differs.
+- **Hearthstone Access for Mac** (plain port, the [`mac-port`](../../tree/mac-port) branch): **4 Hearthstone access for Mac (port).zip**, source in **5 Hearthstone access for Mac (port) sourcecode.zip**. Hearthstone Access exactly as on Windows, without the enhancements, speech through the macOS system voice.
 
 Both Mac versions install into the same place; running one installer replaces the other.
 
