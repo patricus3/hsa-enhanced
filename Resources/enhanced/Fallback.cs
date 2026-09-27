@@ -100,6 +100,7 @@ namespace HSAEnhanced
             try
             {
                 TickPopups();
+                SetRotation.Tick();
                 MenuAugment.Tick();
                 Back.Tick();
                 Check();
@@ -153,6 +154,7 @@ namespace HSAEnhanced
             // HSA busy with something of its own: a UI (other than ours), a forced key, a notification
             var uis = Ref.Field(Mgr, "s_curUIs")?.GetValue(null) as IList;
             if (uis != null) foreach (var u in uis) if (u != m_ui) return;
+            if (SetRotation.Active) return;
             if (Ref.Field(Mgr, "s_forcedKey")?.GetValue(null) != null) return;
             if (Ref.Field(Mgr, "s_curNotificationDismissButton")?.GetValue(null) as UnityEngine.Object) return;
 

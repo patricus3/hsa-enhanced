@@ -166,7 +166,11 @@ static class Hunks
     // reviewed by hand: recompile-only fixes
     // Box::OnSetRotationButtonPressed: HSA disables the set-rotation button (an early return); the
     // game's own handler stays, so the button on the box keeps working
-    static readonly string[] Skip = { "Blizzard.T5.WebView.WebViewService::OnNetCacheFeaturesReady", "AssetLoader::SendMissingAssetTelemetry", "Box::OnSetRotationButtonPressed" };
+    // SetRotationManager::ShouldShowSetRotationIntro / HasSeenStandardModeTutorial: HSA turns the new
+    // year's set rotation intro off (return false / true); the game's own versions stay, and the intro
+    // is read by enhanced/SetRotation.cs
+    static readonly string[] Skip = { "Blizzard.T5.WebView.WebViewService::OnNetCacheFeaturesReady", "AssetLoader::SendMissingAssetTelemetry", "Box::OnSetRotationButtonPressed",
+        "SetRotationManager::ShouldShowSetRotationIntro", "SetRotationManager::HasSeenStandardModeTutorial" };
     static bool IsNoise(string tok) => Noise.Contains(tok) || (tok.StartsWith("S:") && tok[2..].Trim().Length <= 1);
 
     public static void Seeds(string detailPath, string outPath)

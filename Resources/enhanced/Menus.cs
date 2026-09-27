@@ -141,7 +141,7 @@ namespace HSAEnhanced
         {
             var parent = Owner(menu);
             if (parent is AccessibleHub) return;                 // HubMenu takes care of it
-            if (parent is FallbackUI || parent is AccessiblePlayScreen) return;   // ours, built from the screen already
+            if (parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen) return;   // ours, built from the screen already
             if (BuiltWholeByHsa(parent)) { if (GameState.Get() == null && Engine.Enabled) MarkLocked(menu); return; }
             var root = parent as Component;
             s_open = menu;
@@ -273,7 +273,7 @@ namespace HSAEnhanced
             var menu = s_open;
             if (menu == null || GameState.Get() != null || !Engine.Enabled) return;
             var parent = Owner(menu);
-            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
+            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
             if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) return;
@@ -398,6 +398,7 @@ namespace HSAEnhanced
         {
             try
             {
+                if (SetRotation.Running) { Log.Info("back: not during the set rotation intro"); AccessibilityMgr.OutputNotification(Str.Join(Str.Back, Str.Unavailable)); return; }
                 if (Navigation.GoBack()) { Log.Info("back: the game's navigation"); return; }
                 // adventures go back through their own sub-screen stack
                 if (SceneMgr.Get() != null && SceneMgr.Get().GetMode() == SceneMgr.Mode.ADVENTURE && AdventureConfig.Get() != null

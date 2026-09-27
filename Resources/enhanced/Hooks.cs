@@ -92,8 +92,12 @@ namespace HSAEnhanced
                 if (!Engine.Enabled) return false;
                 var widget = Ui.FieldOfType<Hearthstone.UI.Widget>(hsaPopup);
                 if (widget == null) return false;
-                Log.Info("format picker: read from its buttons");
-                FallbackWatcher.ShowPopup(widget.gameObject, hsaPopup);
+                // during the set rotation intro it announces the new year: its texts are read too
+                var tray = DeckPickerTrayDisplay.Get();
+                var state = tray == null ? null : Ref.Get(tray, "m_setRotationTutorialState");
+                bool rotation = state != null && state.ToString() != "INACTIVE";
+                Log.Info("format picker: read from its buttons" + (rotation ? " and texts (set rotation)" : ""));
+                FallbackWatcher.ShowPopup(widget.gameObject, hsaPopup, rotation);
                 return true;
             }
             catch (Exception e) { Log.Error(e); return false; }
