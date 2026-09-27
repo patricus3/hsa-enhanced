@@ -291,8 +291,26 @@ namespace HSAEnhanced
             }
             catch (Exception e) { Log.Error(e); }
             if (lines.Count == 0) return Ui.LabelOf(button);
-            if (button is CollectionDeckBoxVisual && lines.Count > 1) return Str.Join(lines[0], lines[1]);
+            if (button is CollectionDeckBoxVisual && lines.Count > 1)
+            {
+                var warning = DeckBoxWarning((CollectionDeckBoxVisual)button, lines[1]);
+                return Str.Join(lines[0], lines[1], warning);
+            }
             return Str.Join(lines.ToArray());
+        }
+
+        // what the deck box shows when the deck is not playable as it is: the line under its name
+        // (e.g. how many cards are missing, an invalid sideboard) and the count badge ("29/30")
+        static string DeckBoxWarning(CollectionDeckBoxVisual box, string said)
+        {
+            bool count = Ref.Get<bool>(box, "m_isShowingInvalidCardCount");
+            bool sideboard = Ref.Get<int>(box, "m_invalidSideboardCardCount") > 0 || Ref.Get<int>(box, "m_missingSideboardCardCount") > 0;
+            if (!count && !sideboard) return null;
+            var desc = Ref.Get<UberText>(box, "m_deckDesc");
+            var badge = count ? Ref.Get<UberText>(box, "m_invalidCardCountIndicatorText") : null;
+            var line = desc == null ? null : Ui.ShownText(desc.Text);
+            if (line != null && Labels.Norm(line) == Labels.Norm(said)) line = null;     // read already
+            return Str.Join(line, badge == null ? null : Ui.ShownText(badge.Text));
         }
 
         // the choice the tray has selected: the field of its type that holds one of its choices
