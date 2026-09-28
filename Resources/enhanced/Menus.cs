@@ -141,7 +141,9 @@ namespace HSAEnhanced
         {
             var parent = Owner(menu);
             if (parent is AccessibleHub) return;                 // HubMenu takes care of it
-            if (parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen) return;   // ours, built from the screen already
+            if (parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || parent is AccessiblePets) return;   // ours, built from the screen already
+            // the collection's Browse Collection menu and deck menu: Pets (HSA leaves them out)
+            if (parent is AccessibleCollectionManager && Engine.Enabled && GameState.Get() == null) Pets.AddTo(menu, parent);
             if (BuiltWholeByHsa(parent)) { if (GameState.Get() == null && Engine.Enabled) MarkLocked(menu); return; }
             var root = parent as Component;
             s_open = menu;
@@ -284,7 +286,7 @@ namespace HSAEnhanced
                 return;
             }
             if (!Engine.Enabled) return;
-            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
+            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || parent is AccessiblePets || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
             if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) return;
