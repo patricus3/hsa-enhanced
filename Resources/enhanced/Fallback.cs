@@ -34,6 +34,7 @@ namespace HSAEnhanced
         FallbackUI m_ui;
         string m_candidate;     // target seen on the previous check
         float m_candidateSince;
+        bool m_claimed;         // the popup found has an HSA reader of its own
         string m_emptyKey;      // target that had no buttons, and until when not to look again
         float m_emptyUntil;
         float m_next;
@@ -73,12 +74,24 @@ namespace HSAEnhanced
             foreach (var m in UnityEngine.Object.FindObjectsByType<ButtonListMenu>(FindObjectsSortMode.None))
             {
                 if (m == null || m is AccessibleUI || !m.IsShown() || !m.gameObject.activeInHierarchy) continue;
-                bool open = false;
-                foreach (var p in s_popups) if (p.Root == m.gameObject) { open = true; break; }
-                if (open) continue;
+                if (IsOpen(m.gameObject)) continue;
                 Log.Info("button list menu: " + m.GetType().Name + " read from its buttons");
                 ShowPopup(m.gameObject, null);     // its header is the popup's title
             }
+            // Options > Privacy > Privacy Settings: a panel of switches (chat, nearby friends, ...),
+            // Done and the shop offers rules (its section headings are not options: nothing to press)
+            var privacy = PrivacySettingsMenu.Get();
+            if (privacy != null && privacy && privacy.IsShown() && privacy.gameObject.activeInHierarchy && !IsOpen(privacy.gameObject))
+            {
+                Log.Info("privacy settings: read from its switches and buttons");
+                ShowPopup(privacy.gameObject, null);
+            }
+        }
+
+        static bool IsOpen(GameObject root)
+        {
+            foreach (var p in s_popups) if (p.Root == root) return true;
+            return false;
         }
 
         static void TickPopups()
@@ -110,6 +123,7 @@ namespace HSAEnhanced
 
         void Update()
         {
+            MercBattle.Tick();      // every frame: the ability tray opens and closes quickly
             if (Time.unscaledTime < m_next) return;
             m_next = Time.unscaledTime + 0.5f;
             try
@@ -117,6 +131,7 @@ namespace HSAEnhanced
                 TickPopups();
                 TickButtonListMenus();
                 CreditsWatcher.Ensure();
+                Mercenaries.Tick();
                 SetRotation.Tick();
                 MenuAugment.Tick();
                 Back.Tick();
@@ -136,12 +151,16 @@ namespace HSAEnhanced
             // an adventure book page: HSA's page reader takes it about a second after the adventure
             // screen goes quiet; ours only if it has not after a few seconds (no menu swapped under the player)
             if (m_ui == null && !popup && Book.IsShown() && Time.unscaledTime - m_candidateSince < 3f) return;
+            // a popup with an HSA reader that is not reading it: ours after a moment (its reader may
+            // still start; then it takes the popup and ours goes away)
+            if (m_ui == null && popup && m_claimed && Time.unscaledTime - m_candidateSince < 2f) return;
 
             if (m_ui != null && m_ui.Key == key) { m_ui.Refresh(false); return; }
             // this target had nothing to offer a moment ago: look again only every 2 seconds
             if (key == m_emptyKey && Time.unscaledTime < m_emptyUntil) return;
             Hide();
-            m_ui = new FallbackUI(key, root, popup);
+            m_ui = new FallbackUI(key, root, popup, popup);     // a popup's texts are read too
+            if (popup) Log.Info("fallback: popup " + root.name + (m_claimed ? " (its HSA reader is not reading it)" : ""));
             if (!m_ui.HasButtons) { m_ui = null; m_emptyKey = key; m_emptyUntil = Time.unscaledTime + 2f; return; }   // nothing on screen to offer (loading)
             AccessibilityMgr.ShowUI(m_ui);
             m_ui.Start();
@@ -175,7 +194,8 @@ namespace HSAEnhanced
             if (Ref.Field(Mgr, "s_forcedKey")?.GetValue(null) != null) return;
             if (Ref.Field(Mgr, "s_curNotificationDismissButton")?.GetValue(null) as UnityEngine.Object) return;
 
-            // topmost popup / dialog nobody made accessible
+            // topmost popup / dialog nobody reads: none made accessible, or its HSA reader is not
+            // reading it (no HSA UI is up at this point: e.g. a reader that closed at once)
             var dialog = Ref.Get<DialogBase>(DialogManager.Get(), "m_currentDialog");
             if (dialog != null && dialog.gameObject.activeInHierarchy && !Handled(dialog.gameObject)) { root = dialog.gameObject; popup = true; }
             var ctx = UIContext.GetRoot();
@@ -185,13 +205,23 @@ namespace HSAEnhanced
                 var go = latest == null ? null : latest.PopupInstance;
                 if (go != null && go.activeInHierarchy && !Handled(go)) { root = go; popup = true; }
             }
-            if (root != null) { key = "popup:" + root.GetInstanceID(); return; }
+            if (root != null) { key = "popup:" + root.GetInstanceID(); m_claimed = HasHsaReader(root); return; }
 
             // a screen with no HSA screen (or HSA's hub screen left over after leaving the hub)
             var screen = Ref.Field(Mgr, "s_curScreen")?.GetValue(null);
-            if (BlackMarketWatcher.Active > 0 || LuckyDrawWatcher.Active > 0 || CreditsWatcher.Active > 0) return;
-            if (screen == null || (screen is AccessibleHub && mode != SceneMgr.Mode.HUB) || Inert(screen as AccessibleScreen) || Silent(screen))
+            if (BlackMarketWatcher.Active > 0 || LuckyDrawWatcher.Active > 0 || CreditsWatcher.Active > 0 || Mercenaries.Active > 0) return;
+            // (the pack opening screen is quiet when a pack's reveal closes, and still handles itself)
+            bool quiet = Silent(screen) && mode != SceneMgr.Mode.PACKOPENING;
+            if (screen == null || (screen is AccessibleHub && mode != SceneMgr.Mode.HUB) || Inert(screen as AccessibleScreen) || quiet)
                 key = "screen:" + mode + ":" + (screen == null ? "" : screen.GetType().Name);
+        }
+
+        // an HSA reader belongs to this popup (it is not reading it now; it may still start)
+        static bool HasHsaReader(GameObject go)
+        {
+            foreach (var c in go.GetComponentsInParent<Component>(true)) if (c is AccessibleUI || c is AccessibleScreen) return true;
+            foreach (var c in go.GetComponentsInChildren<Component>(true)) if (c is AccessibleUI || c is AccessibleScreen) return true;
+            return false;
         }
 
         // An HSA screen that is set but handles nothing here: it has no help to give (e.g. the
@@ -203,13 +233,16 @@ namespace HSAEnhanced
             catch { return false; }
         }
 
-        // Made accessible already: an HSA UI/screen component in or above it, or our Black Market popup
+        // Read already: the current HSA screen in or above it (its HSA UI readers are not up, or
+        // FindTarget would have stopped before), our own readers, or our Black Market popup
         static bool Handled(GameObject go)
         {
+            var screen = Ref.Field(Mgr, "s_curScreen")?.GetValue(null);
             foreach (var c in go.GetComponentsInParent<Component>(true))
-                if (c is AccessibleUI || c is AccessibleScreen) return true;
+                if (c is AccessibleScreen && ReferenceEquals(c, screen)) return true;
             foreach (var c in go.GetComponentsInChildren<Component>(true))
-                if (c is AccessibleUI || c is AccessibleScreen || c is BlackMarketItemPopup) return true;
+                if ((c is AccessibleScreen && ReferenceEquals(c, screen)) || c is BlackMarketItemPopup) return true;
+            if (Mercenaries.Handles(go)) return true;
             // pages our own screens read (the Black Market page, the lucky draw)
             if (BlackMarketWatcher.Active > 0 && go.GetComponentInChildren<BlackMarketMainPage>(true) != null) return true;
             if (LuckyDrawWatcher.Active > 0 && go.GetComponentInChildren<LuckyDrawWidget>(true) != null) return true;
@@ -241,7 +274,7 @@ namespace HSAEnhanced
         {
             var buttons = Buttons();
             // nothing to click on a popup: a click on it usually continues
-            if (buttons.Count == 0 && m_popup && m_root != null)
+            if (!buttons.Exists(b => !(b.Target is UberText)) && m_popup && m_root != null)     // (its texts are no buttons)
             {
                 var root = m_root;
                 buttons.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => AccessibleInputMgr.Click(root) });   // no widget button on it: the virtual mouse
@@ -264,14 +297,23 @@ namespace HSAEnhanced
         {
             var found = m_root != null ? Ui.ClickablesUnder(m_root, null) : Ui.ScreenButtons();
             found.RemoveAll(b => Labels.IsBack(b.Label));
+            // a switch says whether it is on, in HSA's words for its own options' checkboxes
+            foreach (var b in found)
+            {
+                var box = b.Target as CheckBox;
+                if (box == null) continue;
+                var state = LocalizationUtils.Get(box.IsChecked() ? LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED : LocalizationKey.OPTIONS_MENU_CHECKBOX_NOT_CHECKED);
+                b.Label = LocalizationUtils.Format(LocalizationKey.OPTIONS_MENU_CHECKBOX_LABEL, b.Label) + " " + state;
+            }
             if (m_texts && m_root != null)
             {
                 var ui = this;
                 var labels = new List<string>();
                 foreach (var b in found) labels.Add(b.Label);
+                var title = Ref.Get(m_menu, "m_menuName") as string;
                 foreach (var t in Ui.TextsUnder(m_root))
                 {
-                    if (labels.Contains(t.Value)) continue;
+                    if (labels.Contains(t.Value) || (title != null && title.EndsWith(t.Value))) continue;
                     var text = t.Value;
                     labels.Add(text);
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => AccessibilityMgr.Output(ui, text) });
@@ -303,7 +345,7 @@ namespace HSAEnhanced
             foreach (var ut in root.GetComponentsInChildren<UberText>(false))
             {
                 if (ut.GetComponentInParent<PegUIElement>() != null || ut.GetComponentInParent<Clickable>() != null) continue;
-                var s = Str.Clean(ut.Text);
+                var s = Ui.ShownText(ut.Text);     // (a text holding its string key is looked up)
                 if (s.Length > 0) return Str.Join(LocalizedText.UI_POPUP, s);
             }
             return LocalizedText.UI_POPUP;

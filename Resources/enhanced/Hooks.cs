@@ -120,8 +120,22 @@ namespace HSAEnhanced
         // not on the hand card being read yet; HandClick clicks once it is)
         public static bool BeforeClickCard(object gameplay, bool performingDeckAction)
         {
-            try { return HandClick.Before(gameplay, performingDeckAction); }
+            try
+            {
+                // a Mercenaries battle: a mercenary is placed / commanded here
+                var read = Ref.Get(gameplay, "m_cardBeingRead") as AccessibleCard;
+                if (!performingDeckAction && read != null && MercBattle.OnEnter(read.GetCard())) return true;
+                return HandClick.Before(gameplay, performingDeckAction);
+            }
             catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessiblePackOpeningCard.GetLines(); non-null: these lines instead of HSA's
+        // (a Mercenaries pack card: the mercenary, a portrait or coins, with its abilities)
+        public static object PackCardLines(object card)
+        {
+            try { return PackCards.Lines(card); }
+            catch (Exception e) { Log.Error(e); return null; }
         }
 
         // start of AccessibilityMgr.Output(AccessibleComponent speaker, string, bool); our own
@@ -141,6 +155,33 @@ namespace HSAEnhanced
                 Log.Info("mission not started: " + why);
                 return true;
             }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleInGameState.HasAnyHeroGainedAtk(before, after); true: false is returned
+        public static bool SkipHeroAttackCheck(object before, object after)
+        {
+            try { return MercBattle.InBattle; }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleGameplay.MoveMouseToCard(card); true: moved here
+        public static bool BeforeMoveMouseToCard(object gameplay, object card)
+        {
+            try
+            {
+                var c = card as Card;
+                if (c == null || !MercBattle.InBattle || !(c.GetZone() is ZoneHand)) return false;
+                if (!c.IsMousedOver()) AccessibleInputMgr.MoveMouseTo(c);
+                return true;
+            }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's MessagePopupDisplay.ReadMessage(MessageUIData); true: read here
+        public static bool ReadInGameMessage(object popup, object data)
+        {
+            try { return Mail.Read(popup, data); }
             catch (Exception e) { Log.Error(e); return false; }
         }
 

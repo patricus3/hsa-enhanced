@@ -141,7 +141,7 @@ namespace HSAEnhanced
         {
             var parent = Owner(menu);
             if (parent is AccessibleHub) return;                 // HubMenu takes care of it
-            if (parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || parent is AccessiblePets) return;   // ours, built from the screen already
+            if (parent is FallbackUI || parent is SetRotationUI || parent is MercScreen || parent is MercAbilityUI || parent is AccessiblePlayScreen || parent is AccessiblePets) return;   // ours, built from the screen already
             // the collection's Browse Collection menu and deck menu: Pets (HSA leaves them out)
             if (parent is AccessibleCollectionManager && Engine.Enabled && GameState.Get() == null) Pets.AddTo(menu, parent);
             if (BuiltWholeByHsa(parent)) { if (GameState.Get() == null && Engine.Enabled) MarkLocked(menu); return; }
@@ -264,12 +264,29 @@ namespace HSAEnhanced
         {
             var options = owner as OptionsMenu;
             if (options != null) return OptionsScreen.Buttons(options);
-            var found = Ui.ClickablesUnder(owner.gameObject, null);
+            // not what belongs to another HSA reader inside it (the shop's product page is HSA's own
+            // screen with its buy options; its buttons pressed from the shop's menu do nothing)
+            Func<GameObject, bool> others = go => go != owner.gameObject && ReadByHsa(go);
+            var found = Ui.ClickablesUnder(owner.gameObject, others);
             var labels = new HashSet<string>();
             foreach (var b in found) labels.Add(b.Label);
             foreach (var b in Ui.ButtonsIn(owner, new string[0], v => false))
-                if (labels.Add(b.Label)) found.Add(b);
+                if (!UnderOther(b.Target, owner.gameObject) && labels.Add(b.Label)) found.Add(b);
             return found;
+        }
+
+        // an HSA UI or screen of its own sits on this object
+        static bool ReadByHsa(GameObject go)
+        {
+            foreach (var c in go.GetComponents<Component>()) if (c is AccessibleUI || c is AccessibleScreen) return true;
+            return false;
+        }
+
+        static bool UnderOther(Component c, GameObject owner)
+        {
+            if (c == null) return false;
+            for (var t = c.transform; t != null && t.gameObject != owner; t = t.parent) if (ReadByHsa(t.gameObject)) return true;
+            return false;
         }
 
         // Buttons that appear after a menu opened (they slide in, load late): looked for again
@@ -286,7 +303,7 @@ namespace HSAEnhanced
                 return;
             }
             if (!Engine.Enabled) return;
-            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is AccessiblePlayScreen || parent is AccessiblePets || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
+            if (parent == null || parent is AccessibleHub || parent is FallbackUI || parent is SetRotationUI || parent is MercScreen || parent is MercAbilityUI || parent is AccessiblePlayScreen || parent is AccessiblePets || BuiltWholeByHsa(parent) || !(parent is AccessibleComponent) || !AccessibilityMgr.IsCurrentlyFocused((AccessibleComponent)parent)) return;
             if (!IsCurrentMenuOf(parent, menu)) return;
             var root = parent as Component;
             if (parent is AdventureBookPageDisplay && Book.FillMissionMenu(menu)) return;
@@ -417,6 +434,8 @@ namespace HSAEnhanced
         {
             try
             {
+                // a Mercenaries village popup: closed (the game's back navigation leaves the village)
+                if (Mercenaries.CloseVillagePopup()) return;
                 if (SetRotation.Running) { Log.Info("back: not during the set rotation intro"); AccessibilityMgr.OutputNotification(Str.Join(Str.Back, Str.Unavailable)); return; }
                 if (Navigation.GoBack()) { Log.Info("back: the game's navigation"); return; }
                 // adventures go back through their own sub-screen stack

@@ -157,6 +157,44 @@ static class Enhance
             o.Add(il.Create(OpCodes.Brfalse, original));
             o.Add(il.Create(OpCodes.Ret));
         }, AtStart: true, Params: "System.Boolean"),
+        // pack opening: a Mercenaries card (mercenary, portrait or coins) read as such, with its abilities
+        new("Accessibility.AccessiblePackOpeningCard", "GetLines", "PackCardLines", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            var pop = il.Create(OpCodes.Pop);
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Dup)); o.Add(il.Create(OpCodes.Brfalse, pop));
+            o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
+            o.Add(pop);
+        }, AtStart: true),
+        // Mercenaries battles have no heroes: HSA's hero check after each action (it crashed on every
+        // action and the fight went unspoken) says no hero gained attack there
+        new("Accessibility.AccessibleInGameState", "HasAnyHeroGainedAtk", "SkipHeroAttackCheck", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ldc_I4_0));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // Mercenaries battles: the mercenaries on the bench are hand cards without a mana gem, which HSA
+        // points the mouse at (it failed every frame); the mouse goes to the card itself there
+        new("Accessibility.AccessibleGameplay", "MoveMouseToCard", "BeforeMoveMouseToCard", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // in-game messages (the mailbox, news): read from the data models the popup shows (HSA's
+        // reader knows only older message types and closed the popup at once)
+        new("Hearthstone.InGameMessage.UI.MessagePopupDisplay", "ReadMessage", "ReadInGameMessage", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
         // what HSA says, and when it gives a screen focus: a screen that stays silent when it
         // gets focus handles nothing, and the fallback menu takes it over
         new("Accessibility.AccessibilityMgr", "Output", "OnSpeech", (il, m, hook, o) =>

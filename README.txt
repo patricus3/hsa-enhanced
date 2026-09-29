@@ -18,6 +18,9 @@ What it adds to Hearthstone Access
 - Options: Signature Card Appearance (and Language where the game offers it) through Hearthstone Access's own dropdown reader; Miscellaneous and Privacy, and their menus, read from the game's buttons.
 - Credits: each year's credits by section, roles with their names, the year buttons, and every credits card as it appears.
 - Pets (untested: written without an account that owns a pet): Collection > Browse Collection > Pets lists every pet with its level and favorite state; a pet shows its description, Favorite Pet and its skins (one per level, with Favorite Skin). While a deck is edited, its menu has Pets too: Choose sets the deck's pet or one of its skins, Random and Favorites Only as the deck's pet slot. All words are the game's.
+- Mercenaries battles: Enter on a mercenary on your bench puts it into play; Enter on one of your mercenaries on the board opens its abilities (speed, cooldown, text, the one already chosen first); choosing one does what a click does, and one that needs a target goes to the usual target mode. The same menu cancels a chosen ability, reads the equipment and the enemies with the ability each has prepared, and has the Ready / Fight button. Enter on an enemy says what it has prepared. Hearthstone Access's crashes in these battles (no heroes, bench cards without a mana gem) are fixed.
+- Messages: the mailbox and other in-game messages are read (title, text, the items they list); Hearthstone Access closed them at once.
+- Fallback menus: a popup whose Hearthstone Access reader is not reading it gets a menu of its own, and popups read their texts as well as their buttons.
 - A way back everywhere: menus without one get the game's own back navigation; a back that does nothing is followed up; as a last resort Back returns to the main menu.
 - Screens Hearthstone Access does not know get a menu of what they show.
 - Fixes: HSA changes the transplant used to lose (operator-only edits, early returns) are carried over, which fixes e.g. adventure mission screens and the new-year set rotation that kept the Shop, Black Market and lucky draw hidden; a second "find game" request is no longer sent; a hand card is picked up only once the pointer is on it, so the card next to it is no longer played while the hand moves after a draw or discover.
@@ -47,7 +50,7 @@ Requirements: Hearthstone installed with Battle.net, an internet connection duri
 
 Speech goes to your screen reader (NVDA, JAWS and others Prism supports), or to the Windows voices when none is running; it follows a screen reader started or closed while playing. Tolk is not used.
 
-A scheduled task rebuilds the mod after a game update and when a new Hearthstone Access release comes out (checked daily), while the game is closed. Uninstall Hearthstone access.bat removes everything and puts the game's own files back. Logs: C:\ProgramData\HearthstoneAccess\logs.
+A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too) and when a new Hearthstone Access release comes out (checked daily). If the game is running at that point (Battle.net starts it right after an update), the new build is made meanwhile and a message on top of the game asks whether to close Hearthstone now and put the mod back (then offers to start the game again); if you say no, it goes back in the moment you close the game yourself. Uninstall Hearthstone access.bat removes everything and puts the game's own files back. Logs: C:\ProgramData\HearthstoneAccess\logs.
 
 
 macOS

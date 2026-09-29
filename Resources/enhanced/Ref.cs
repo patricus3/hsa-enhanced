@@ -46,6 +46,14 @@ namespace HSAEnhanced
             return null;
         }
 
+        // a method's result (null when it is missing or returns nothing)
+        internal static object Invoke(object o, string method, params object[] args)
+        {
+            var m = o == null ? null : Method(o.GetType(), method, args.Length);
+            if (m == null) { Log.Warn("missing method " + (o == null ? "?" : o.GetType().Name) + "." + method); return null; }
+            return m.Invoke(m.IsStatic ? null : o, args);
+        }
+
         internal static bool Call(object o, string method, params object[] args)
         {
             var m = o == null ? null : Method(o.GetType(), method, args.Length);

@@ -46,7 +46,7 @@ Requirements: Hearthstone installed with Battle.net, an internet connection duri
 
 Speech goes to your screen reader (NVDA, JAWS and others Prism supports), or to the Windows voices when none is running; it follows a screen reader started or closed while playing. Tolk is not used.
 
-A scheduled task rebuilds the mod after a game update and when a new Hearthstone Access release comes out (checked daily), while the game is closed. Uninstall Hearthstone access.bat removes everything and puts the game's own files back. Logs: C:\ProgramData\HearthstoneAccess\logs.
+A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too) and when a new Hearthstone Access release comes out (checked daily). If the game is running at that point (Battle.net starts it right after an update), the new build is made meanwhile and a message on top of the game asks whether to close Hearthstone now and put the mod back (then offers to start the game again); if you say no, it goes back in the moment you close the game yourself. Uninstall Hearthstone access.bat removes everything and puts the game's own files back. Logs: C:\ProgramData\HearthstoneAccess\logs.
 
 
 macOS
