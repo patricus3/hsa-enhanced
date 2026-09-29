@@ -737,6 +737,8 @@ namespace HSAEnhanced
             var why = WhyHidden(c);
             if (why != null) { LeftOut(why); return; }
             if (visibleOnly && !IsVisible(c)) { LeftOut("not drawn"); return; }
+            // the village Campfire's task cards stay drawn behind other screens (its own menu reads them)
+            if (visibleOnly && c.GetComponentInParent<Hearthstone.LettuceVillageTaskBoard>() != null) { LeftOut("campfire task"); return; }
             if (!seen.Add(c.gameObject)) return;
             if (exclude != null && UnderAny(c.transform, exclude)) { LeftOut("bar or box out of view"); return; }
             var label = LabelOf(c);

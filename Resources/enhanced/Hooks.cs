@@ -158,6 +158,13 @@ namespace HSAEnhanced
             catch (Exception e) { Log.Error(e); return false; }
         }
 
+        // start of HSA's AccessibleRewardData.GetLines(); non-null: these lines instead of HSA's
+        public static object RewardLines(object reward)
+        {
+            try { return RewardText.Lines(reward); }
+            catch (Exception e) { Log.Error(e); return null; }
+        }
+
         // start of HSA's AccessibleInGameState.HasAnyHeroGainedAtk(before, after); true: false is returned
         public static bool SkipHeroAttackCheck(object before, object after)
         {

@@ -74,8 +74,26 @@ namespace HSAEnhanced
         // the Travel Point and Workshop popups are ours, not the fallback's
         internal static bool Handles(GameObject go)
         {
-            return Active > 0 && (go.GetComponentInChildren<LettuceVillageZonePortal>(true) != null || go.GetComponentInParent<LettuceVillageZonePortal>() != null
+            // (a treasure or visitor pick on the map is a popup the map's menu reads, with each one's text)
+            return Active > 0 && (s_pickShown || IsPickPopup(go)
+                                  || go.GetComponentInChildren<LettuceVillageZonePortal>(true) != null || go.GetComponentInParent<LettuceVillageZonePortal>() != null
                                   || go.GetComponentInChildren<LettuceVillageWorkshop>(true) != null || go.GetComponentInParent<LettuceVillageWorkshop>() != null);
+        }
+
+        static bool s_pickShown;    // the map's menu is a treasure or visitor pick
+
+        // the game's treasure / visitor pick popup is up (it has no class of its own: known by its name)
+        static bool PickPopupShown(string kind)
+        {
+            var ctx = Hearthstone.UI.UIContext.GetRoot();
+            var p = ctx == null || !ctx.ShowingPopups() ? null : ctx.GetLatestPopup();
+            var go = p == null ? null : p.PopupInstance;
+            return go != null && go.activeInHierarchy && go.name.IndexOf(kind, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        static bool IsPickPopup(GameObject go)
+        {
+            return go.name.IndexOf("TreasureSelection", StringComparison.OrdinalIgnoreCase) >= 0 || go.name.IndexOf("VisitorSelection", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         static bool Blocked(AbsSceneDisplay display)
@@ -86,6 +104,7 @@ namespace HSAEnhanced
         static bool Build(SceneMgr.Mode mode, out string key, out string title, out List<GameButton> items)
         {
             key = null; title = ""; items = new List<GameButton>();
+            s_pickShown = false;
             switch (mode)
             {
                 case SceneMgr.Mode.LETTUCE_VILLAGE: return Village(ref key, ref title, items);
@@ -376,11 +395,11 @@ namespace HSAEnhanced
             if (display == null) return false;
             var dm = Ref.Invoke(display, "GetDisplayDataModel") as LettuceMapDisplayDataModel;
             // picks come while the map is still blocked
-            if (dm != null && Ref.Get<bool>(display, "m_waitingForTreasureSelection") && dm.TreasureSelectionData != null
+            if (dm != null && (Ref.Get<bool>(display, "m_waitingForTreasureSelection") || PickPopupShown("TreasureSelection")) && dm.TreasureSelectionData != null
                 && dm.SelectedTreasureChoices >= 0 && dm.SelectedTreasureChoices < dm.TreasureSelectionData.Count)
-                return Treasure(display, dm, ref key, ref title, items);
+                return s_pickShown = Treasure(display, dm, ref key, ref title, items);
             if (dm != null && dm.VisitorSelectionData != null && dm.VisitorSelectionData.VisitorOptions != null && dm.VisitorSelectionData.VisitorOptions.Count > 0)
-                return Visitor(display, dm, ref key, ref title, items);
+                return s_pickShown = Visitor(display, dm, ref key, ref title, items);
             if (Blocked(display) || !Ref.Get<bool>(display, "m_lettuceMapDataInitialized")) return false;
             var map = Ref.Get<LettuceMap>(display, "m_lettuceMap");
             if (map == null) return false;

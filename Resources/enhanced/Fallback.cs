@@ -124,6 +124,7 @@ namespace HSAEnhanced
         void Update()
         {
             MercBattle.Tick();      // every frame: the ability tray opens and closes quickly
+            EndScreenLog.Tick();    // every frame: an Enter on the end screen is logged with its state
             if (Time.unscaledTime < m_next) return;
             m_next = Time.unscaledTime + 0.5f;
             try
@@ -320,6 +321,15 @@ namespace HSAEnhanced
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => AccessibilityMgr.Output(ui, text) });
                 }
                 Ui.SortByScreen(found);
+            }
+            // the village Campfire: its visitors' tasks (cards without texts of their own) come first
+            var tasks = Campfire.Tasks(m_root);
+            if (tasks != null && tasks.Count > 0)
+            {
+                var labels = new List<string>();
+                foreach (var t in tasks) labels.Add(t.Label);
+                foreach (var b in found) if (!Labels.SimilarToAny(labels, b.Label)) { labels.Add(b.Label); tasks.Add(b); }
+                return tasks;
             }
             // an adventure book page: its chapters or missions from the game's data come first
             var book = m_root == null ? Book.Buttons() : null;

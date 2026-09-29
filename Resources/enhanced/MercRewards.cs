@@ -5,13 +5,15 @@ using UnityEngine;
 
 namespace HSAEnhanced
 {
-    // After a Mercenaries battle the end screen shows what the mercenaries got (their experience, a
-    // level up) on its own overlay, which waits for its own click; HSA does not know it, and its Enter
-    // on the end screen does nothing while it is up. It is read here from the texts it shows (each
-    // mercenary, "+N xp", "Level up!"), and Continue closes it the way the game does.
+    // After a Mercenaries battle the end screen's first click shows what the mercenaries got (their
+    // experience, a level up) on its own overlay, which waits for its own click (DISMISS_TWO_SCOOP);
+    // HSA does not know it, so its Enter on the end screen did nothing more while it was up. It is
+    // read here from the overlay's own data (each mercenary, the experience gained, its level, a level
+    // up), in the game's words, and Continue closes it the way its click does.
     static class MercRewards
     {
         static MercRewardsUI s_ui;
+        static readonly HashSet<int> s_closed = new HashSet<int>();     // closed ones stay a few seconds before they go
 
         // from FallbackWatcher, twice a second
         internal static void Tick()
@@ -20,14 +22,12 @@ namespace HSAEnhanced
             {
                 MercenariesExperienceTwoScoop shown = null;
                 foreach (var s in UnityEngine.Object.FindObjectsByType<MercenariesExperienceTwoScoop>(FindObjectsSortMode.None))
-                    if (s != null && s.isActiveAndEnabled && Ref.Get(s, "m_onClosedCallback") != null) { shown = s; break; }
+                    if (s != null && s.isActiveAndEnabled && !s_closed.Contains(s.GetInstanceID()) && Ref.Get(s, "m_onClosedCallback") != null && Lines(s).Count > 0) { shown = s; break; }
                 if (shown == null) { Hide(); return; }
-                if (s_ui != null && s_ui.Scoop == shown) { s_ui.Refresh(); return; }
-                var texts = Texts(shown);
-                if (texts.Count == 0) return;       // still loading
+                if (s_ui != null && s_ui.Scoop == shown) return;
                 Hide();
                 s_ui = new MercRewardsUI(shown);
-                Log.Info("mercenaries: rewards " + string.Join(" | ", texts.ToArray()));
+                Log.Info("mercenaries: rewards " + string.Join(" | ", Lines(shown).ToArray()));
                 AccessibilityMgr.ShowUI(s_ui);
                 s_ui.Start();
             }
@@ -42,16 +42,29 @@ namespace HSAEnhanced
             AccessibilityMgr.HideUI(ui);
         }
 
-        internal static List<string> Texts(MercenariesExperienceTwoScoop scoop)
+        // each mercenary as the overlay shows it: name, +N xp, its level, Level up!
+        internal static List<string> Lines(MercenariesExperienceTwoScoop scoop)
         {
-            var found = new List<string>();
-            foreach (var t in Ui.TextsUnder(scoop.gameObject)) found.Add(t.Value);
-            return found;
+            var lines = new List<string>();
+            var rewards = Ref.Get<List<MercenaryExpRewardData>>(scoop, "m_mercenaryExpRewards");
+            if (rewards == null) return lines;
+            foreach (var r in rewards)
+            {
+                if (r == null) continue;
+                var merc = CollectionManager.Get().GetMercenary(r.MercenaryId);
+                var name = merc == null ? null : Str.Clean(merc.m_mercName);
+                int level = GameUtils.GetMercenaryLevelFromExperience(r.FinalExperience);
+                lines.Add(Str.Join(name, Str.Game("GLUE_LETTUCE_MERCENARY_EXP_GAIN", r.Amount),
+                    Str.Word("GLUE_LETTUCE_MERCENARY_LEVEL_LABEL") + " " + level,
+                    r.NumberOfLevelUps > 0 ? Str.Word("GLUE_LETTUCE_MERCENARY_LEVEL_UP") : null));
+            }
+            return lines;
         }
 
         internal static void Close(MercenariesExperienceTwoScoop scoop)
         {
             Log.Info("mercenaries: rewards closed");
+            s_closed.Add(scoop.GetInstanceID());
             Hide();
             Ref.Call(scoop, "OnClosed");
         }
@@ -60,33 +73,15 @@ namespace HSAEnhanced
     class MercRewardsUI : AccessibleUI
     {
         internal readonly MercenariesExperienceTwoScoop Scoop;
-        AccessibleMenu m_menu;
-        string m_shown;
+        readonly AccessibleMenu m_menu;
 
         internal MercRewardsUI(MercenariesExperienceTwoScoop scoop)
         {
             Scoop = scoop;
-            Build();
-        }
-
-        void Build()
-        {
-            var texts = MercRewards.Texts(Scoop);
-            m_shown = string.Join("\n", texts.ToArray());
-            var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
-            m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, LocalizedText.UI_POPUP, () => MercRewards.Close(Scoop)));
+            m_menu = new AccessibleMenu(this, LocalizedText.UI_POPUP, () => MercRewards.Close(Scoop));
             var ui = this;
-            foreach (var t in texts) { var text = t; m_menu.AddOption(text, () => AccessibilityMgr.Output(ui, text)); }
+            foreach (var l in MercRewards.Lines(scoop)) { var line = l; m_menu.AddOption(line, () => AccessibilityMgr.Output(ui, line)); }
             m_menu.AddOption(Str.Word("GLOBAL_CONTINUE"), () => MercRewards.Close(Scoop));
-            m_menu.SetIndex(Math.Max(0, Math.Min(keep, m_menu.GetNumItems() - 1)));
-        }
-
-        // the texts fill in as the overlay animates: the menu follows (the player stays where they are)
-        internal void Refresh()
-        {
-            var texts = MercRewards.Texts(Scoop);
-            if (string.Join("\n", texts.ToArray()) == m_shown) return;
-            Build();
         }
 
         internal void Start() { m_menu.StartReading(); }

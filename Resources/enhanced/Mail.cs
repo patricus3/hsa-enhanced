@@ -36,7 +36,7 @@ namespace HSAEnhanced
         }
 
         // the texts of a data model, then those of the models it holds (the items, a launch effect)
-        static void Collect(object model, List<string> lines, int depth)
+        internal static void Collect(object model, List<string> lines, int depth)
         {
             if (model == null || depth > 3) return;
             foreach (var p in model.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))

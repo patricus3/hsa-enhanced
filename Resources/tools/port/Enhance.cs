@@ -167,6 +167,16 @@ static class Enhance
             o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
             o.Add(pop);
         }, AtStart: true),
+        // rewards HSA's reader does not know ("1 unknown reward": Mercenaries rewards, skins, pets, ...)
+        new("Accessibility.AccessibleRewardData", "GetLines", "RewardLines", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            var pop = il.Create(OpCodes.Pop);
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Dup)); o.Add(il.Create(OpCodes.Brfalse, pop));
+            o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
+            o.Add(pop);
+        }, AtStart: true),
         // Mercenaries battles have no heroes: HSA's hero check after each action (it crashed on every
         // action and the fight went unspoken) says no hero gained attack there
         new("Accessibility.AccessibleInGameState", "HasAnyHeroGainedAtk", "SkipHeroAttackCheck", (il, m, hook, o) =>
