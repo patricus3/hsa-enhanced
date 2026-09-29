@@ -9,15 +9,16 @@ namespace HSAEnhanced
     // - Placing mercenaries (the start, or replacing one that died): Enter on a mercenary on the bench
     //   puts it into play at the right end, with the option the game sends when one is dropped there.
     // - Commanding: Enter on a friendly mercenary opens its ability tray, and while the game shows the
-    //   tray (it also opens by itself for each mercenary still to command) a menu of its abilities is
-    //   up: each with its speed, cooldown and text, the one already queued first. Choosing one does what
-    //   a click on it does (the game's own option): one that needs a target leaves the choice to HSA's
-    //   target mode, a Choose One to HSA's choice mode. Also: cancel the queued ability, the
-    //   mercenary's equipment, the enemies with what they have prepared, and the Ready / Fight button.
+    //   tray (it also opens by itself for each mercenary still to command) a menu of the abilities the
+    //   tray shows is up: each with its speed, cooldown and text, the one already queued first.
+    //   Choosing one does what a click on it does (the game's own option); a Choose One goes to HSA's
+    //   choice mode. Also: cancel the queued ability, the mercenary's equipment, the Ready / Fight button.
+    // - Targets: while an ability waits for its target, a menu of the targets the game allows (enemies
+    //   first); Enter sends the target with the game's option (no mouse), Back cancels the targeting.
     // - Enter on an enemy mercenary says what it has prepared.
     static class MercBattle
     {
-        static MercAbilityUI s_ui;
+        static MercMenuUI s_ui;
         static int s_dismissedFor;     // the mercenary whose menu was closed with Back
 
         internal static bool InBattle
@@ -40,22 +41,42 @@ namespace HSAEnhanced
         {
             try
             {
-                if (!InBattle || !AccessibilityMgr.IsAccessibilityEnabled()) { Hide(); return; }
+                if (!InBattle || !AccessibilityMgr.IsAccessibilityEnabled() || GameState.Get().IsGameOver()) { Hide(); return; }
                 var gs = GameState.Get();
+                // an ability waiting for its target: the targets the game allows
+                if (gs.IsInTargetMode())
+                {
+                    var option = gs.IsSelectedOptionMercenariesAbility() ? gs.GetSelectedNetworkOption() : null;
+                    var ability = option == null || option.Main == null ? null : gs.GetEntity(option.Main.ID);
+                    if (ability == null) { Hide(); return; }
+                    var targetKey = "target:" + ability.GetEntityId();
+                    if (s_ui != null && s_ui.Key == targetKey) return;
+                    Hide();
+                    var targets = new MercTargetUI(ability, targetKey);
+                    Log.Info("mercenaries: targets for " + ability.GetName() + ": " + targets.Describe());
+                    Show(targets);
+                    return;
+                }
                 var zones = ZoneMgr.Get();
                 var source = zones == null ? null : zones.GetLettuceAbilitiesSourceEntity();
                 if (source == null) { s_dismissedFor = 0; Hide(); return; }
-                if (!source.IsControlledByFriendlySidePlayer() || gs.IsInTargetMode() || gs.IsInSubOptionMode() || ChoiceCardMgr.Get().IsShown()) { Hide(); return; }
+                if (!source.IsControlledByFriendlySidePlayer() || gs.IsInSubOptionMode() || ChoiceCardMgr.Get().IsShown()) { Hide(); return; }
                 if (source.GetEntityId() == s_dismissedFor) return;
                 var key = source.GetEntityId() + ":" + source.GetSelectedLettuceAbilityID() + ":" + gs.GetResponseMode();
                 if (s_ui != null && s_ui.Key == key) return;
                 Hide();
-                s_ui = new MercAbilityUI(source, key);
-                Log.Info("mercenaries: abilities of " + source.GetName() + ": " + s_ui.Describe());
-                AccessibilityMgr.ShowUI(s_ui);
-                s_ui.Start();
+                var menu = new MercAbilityUI(source, key);
+                Log.Info("mercenaries: abilities of " + source.GetName() + ": " + menu.Describe());
+                Show(menu);
             }
             catch (Exception e) { Log.Error(e); Hide(); }
+        }
+
+        static void Show(MercMenuUI ui)
+        {
+            s_ui = ui;
+            AccessibilityMgr.ShowUI(ui);
+            ui.Start();
         }
 
         static void Hide()
@@ -78,7 +99,7 @@ namespace HSAEnhanced
         {
             if (!InBattle || card == null) return false;
             var gs = GameState.Get();
-            if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return false;     // HSA's target / choice mode
+            if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return false;
             var merc = card.GetEntity();
             if (merc == null || !merc.IsMercenary()) return false;
             var gameplay = AccessibleGameplay.Get();
@@ -119,7 +140,7 @@ namespace HSAEnhanced
             return true;
         }
 
-        // the mercenary as its menu names it: name, role, attack / health, and its place in the order
+        // the mercenary as its menu names it: name, role, attack / health
         internal static string Describe(Entity merc)
         {
             string role = null;
@@ -155,22 +176,79 @@ namespace HSAEnhanced
         }
     }
 
-    class MercAbilityUI : AccessibleUI
+    // a menu of ours over the battle
+    abstract class MercMenuUI : AccessibleUI
     {
         internal readonly string Key;
-        readonly Entity m_merc;
-        readonly AccessibleMenu m_menu;
+        protected AccessibleMenu m_menu;
         readonly List<string> m_labels = new List<string>();
 
-        internal MercAbilityUI(Entity merc, string key)
+        protected MercMenuUI(string key) { Key = key; }
+
+        protected void Add(string label, Action action)
         {
-            Key = key;
+            m_labels.Add(label);
+            m_menu.AddOption(label, action);
+        }
+
+        internal string Describe() { return string.Join(" | ", m_labels.ToArray()); }
+
+        internal void Start() { m_menu.StartReading(); }
+
+        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
+
+        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
+    }
+
+    // the targets the chosen ability may go to (the game's list for its option), enemies first; each as
+    // the board shows it (role, attack / health, what an enemy prepared, 2x when strong against it)
+    class MercTargetUI : MercMenuUI
+    {
+        internal MercTargetUI(Entity ability, string key) : base(key)
+        {
+            var gs = GameState.Get();
+            var owner = ability.GetLettuceAbilityOwner();
+            var title = Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.GAMEPLAY_CHOOSE_TARGET));
+            m_menu = new AccessibleMenu(this, title, () => { Log.Info("mercenaries: target choice cancelled"); InputManager.Get().CancelTargetMode(); });
+            foreach (var side in new[] { Player.Side.OPPOSING, Player.Side.FRIENDLY })
+            {
+                var zone = ZoneMgr.Get().FindZoneOfType<ZonePlay>(side);
+                if (zone == null) continue;
+                foreach (var c in zone.GetCards())
+                {
+                    var target = c == null ? null : c.GetEntity();
+                    if (target == null || !gs.IsValidOptionTarget(target, false)) continue;
+                    var t = target;
+                    bool strong = owner != null && side == Player.Side.OPPOSING && owner.IsMyLettuceRoleStrongAgainst(t);
+                    var label = Str.Join(side == Player.Side.OPPOSING ? MercBattle.Prepared(t) : MercBattle.Describe(t),
+                        strong ? Str.Word("GAMEPLAY_LETTUCE_WEAKNESS_LABEL") : null);
+                    Add(label, () =>
+                    {
+                        Log.Info("mercenaries: " + ability.GetName() + " at " + t.GetName());
+                        if (!InputManager.Get().DoNetworkResponse(t)) AccessibilityMgr.Output(this, Str.Join(Str.Clean(t.GetName()), Str.Unavailable));
+                    });
+                }
+            }
+        }
+    }
+
+    class MercAbilityUI : MercMenuUI
+    {
+        readonly Entity m_merc;
+
+        internal MercAbilityUI(Entity merc, string key) : base(key)
+        {
             m_merc = merc;
             m_menu = new AccessibleMenu(this, MercBattle.Describe(merc), () => MercBattle.Dismissed(m_merc));
             var gs = GameState.Get();
             int queued = merc.GetSelectedLettuceAbilityID();
+            // the abilities the tray shows (the game's own choice of cards), else the mercenary's own list
+            var ids = new List<int>();
+            var shown = ZoneMgr.Get().GetLettuceAbilitiesSourceEntity() == merc ? ZoneMgr.Get().GetDisplayedLettuceAbilityCards() : null;
+            if (shown != null) foreach (var c in shown) { var e = c == null ? null : c.GetEntity(); if (e != null) ids.Add(e.GetEntityId()); }
+            if (ids.Count == 0) ids.AddRange(merc.GetLettuceAbilityEntityIDs());
             var abilities = new List<Entity>();
-            foreach (var id in merc.GetLettuceAbilityEntityIDs())
+            foreach (var id in ids)
             {
                 var a = gs.GetEntity(id);
                 if (a == null || a.IsLettuceEquipment()) continue;     // the equipment is read on its own
@@ -179,8 +257,7 @@ namespace HSAEnhanced
             foreach (var a in abilities)
             {
                 var ability = a;
-                var label = MercBattle.Describe(ability, ability.GetEntityId() == queued);
-                Add(label, () => Choose(ability));
+                Add(MercBattle.Describe(ability, ability.GetEntityId() == queued), () => Choose(ability));
             }
             if (queued != 0)
             {
@@ -196,24 +273,8 @@ namespace HSAEnhanced
                 var said = Str.Join(Str.Clean(equipment.GetName()), Str.Clean(text));
                 Add(said, () => AccessibilityMgr.Output(this, said));
             }
-            // the enemies, with what they have prepared (as their bubbles show it)
-            var enemies = ZoneMgr.Get().FindZoneOfType<ZonePlay>(Player.Side.OPPOSING);
-            if (enemies != null)
-                foreach (var c in enemies.GetCards())
-                {
-                    var e = c == null ? null : c.GetEntity();
-                    if (e == null) continue;
-                    var said = MercBattle.Prepared(e);
-                    Add(said, () => AccessibilityMgr.Output(this, said));
-                }
             var ready = ReadyText();
             if (ready.Length > 0) Add(ready, () => { Log.Info("mercenaries: " + ready); InputManager.Get().DoEndTurnButton(); });
-        }
-
-        void Add(string label, Action action)
-        {
-            m_labels.Add(label);
-            m_menu.AddOption(label, action);
         }
 
         // what the game's button says now (Ready!, Fight!, "2/3 Played" ...)
@@ -239,22 +300,9 @@ namespace HSAEnhanced
             }
             Log.Info("mercenaries: " + m_merc.GetName() + " uses " + ability.GetName());
             InputManager.Get().DoNetworkResponse(ability);
-            // a target to choose: HSA's target mode takes over (this menu goes away) and says so
-            if (gs.IsInTargetMode())
-            {
-                var gameplay = AccessibleGameplay.Get();
-                if (gameplay != null) gameplay.ForceAnnounceChooseTarget();
-                return;
-            }
-            if (!gs.IsInSubOptionMode()) AccessibilityMgr.Output(this, Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED)));
+            // a target to choose: the target menu takes over (next frame)
+            if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return;
+            AccessibilityMgr.Output(this, Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED)));
         }
-
-        internal string Describe() { return string.Join(" | ", m_labels.ToArray()); }
-
-        internal void Start() { m_menu.StartReading(); }
-
-        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
-
-        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
     }
 }

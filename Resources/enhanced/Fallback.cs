@@ -132,6 +132,7 @@ namespace HSAEnhanced
                 TickButtonListMenus();
                 CreditsWatcher.Ensure();
                 Mercenaries.Tick();
+                MercRewards.Tick();
                 SetRotation.Tick();
                 MenuAugment.Tick();
                 Back.Tick();
