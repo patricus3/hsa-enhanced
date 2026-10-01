@@ -17,6 +17,9 @@ namespace HSAEnhanced
             set { try { PlayerPrefs.SetInt(ConfirmEndTurnKey, value ? 1 : 0); PlayerPrefs.Save(); } catch (Exception e) { Log.Error(e); } }
         }
 
+        // our own navigation and card reading in matches (Combat): HSA's is no longer used (2026-10-01)
+        internal static bool OwnCombat { get { return true; } }
+
         // start of HSA's AccessibleGameplay.HandleEndTurnInput(); true: E ended the turn here
         internal static bool EndTurnWithoutAsking(object gameplay)
         {

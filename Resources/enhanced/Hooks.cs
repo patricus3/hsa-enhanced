@@ -158,6 +158,44 @@ namespace HSAEnhanced
             catch (Exception e) { Log.Error(e); return false; }
         }
 
+        // start of HSA's gameplay handlers (zone keys, arrows, Tab, card lines, status keys); true: ours handled it
+        public static bool CombatZoneKeys(object gameplay, bool minionsAndHeroesOnly)
+        {
+            try { return Combat.ZoneKeys(gameplay, minionsAndHeroesOnly); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        public static bool CombatZoneMove(object gameplay)
+        {
+            try { return Combat.ZoneMove(gameplay); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        public static bool CombatValidItems(object gameplay)
+        {
+            try { return Combat.ValidItems(gameplay); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        public static bool CombatCardLines(object gameplay)
+        {
+            try { return Combat.CardLines(gameplay); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        public static bool CombatStatusKeys(object gameplay)
+        {
+            try { return Combat.StatusKeys(gameplay); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleGameplay.HandleConfirmOrCancel(targetRequired); true: the target went here
+        public static bool CombatConfirmTarget(object gameplay, bool targetRequired)
+        {
+            try { return Combat.ConfirmTarget(gameplay, targetRequired); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
         // start of HSA's AccessibleGameplay.HandleEndTurnInput(); true: E ended the turn without asking
         public static bool EndTurnInput(object gameplay)
         {

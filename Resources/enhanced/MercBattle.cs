@@ -171,10 +171,13 @@ namespace HSAEnhanced
             }
             var play = ZoneMgr.Get().FindZoneOfType<ZonePlay>(Player.Side.FRIENDLY);
             int pos = play == null ? 1 : ZoneMgr.Get().PredictZonePosition(merc, play, play.GetCards().Count + 1);
-            gs.SetSelectedOptionPosition(pos);
-            Log.Info("mercenaries: " + merc.GetName() + " into play at " + pos);
-            if (!InputManager.Get().DoNetworkResponse(merc))
-                AccessibilityMgr.Output(speaker, Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
+            Combat.WhenReady(speaker, merc, () =>
+            {
+                gs.SetSelectedOptionPosition(pos);
+                Log.Info("mercenaries: " + merc.GetName() + " into play at " + pos);
+                if (!InputManager.Get().DoNetworkResponse(merc))
+                    AccessibilityMgr.Output(speaker, Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
+            });
             return true;
         }
 
@@ -260,11 +263,11 @@ namespace HSAEnhanced
                     bool strong = owner != null && side == Player.Side.OPPOSING && owner.IsMyLettuceRoleStrongAgainst(t);
                     var label = Str.Join(side == Player.Side.OPPOSING ? MercBattle.Prepared(t) : MercBattle.Describe(t),
                         strong ? Str.Word("GAMEPLAY_LETTUCE_WEAKNESS_LABEL") : null);
-                    Add(label, () =>
+                    Add(label, () => Combat.WhenReady(this, t, () =>
                     {
                         Log.Info("mercenaries: " + ability.GetName() + " at " + t.GetName());
                         if (!InputManager.Get().DoNetworkResponse(t)) AccessibilityMgr.Output(this, Str.Join(Str.Clean(t.GetName()), Str.Unavailable));
-                    });
+                    }));
                 }
             }
         }
@@ -336,11 +339,14 @@ namespace HSAEnhanced
                 AccessibilityMgr.Output(this, why);
                 return;
             }
-            Log.Info("mercenaries: " + m_merc.GetName() + " uses " + ability.GetName());
-            InputManager.Get().DoNetworkResponse(ability);
-            // a target to choose: the target menu takes over (next frame)
-            if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return;
-            AccessibilityMgr.Output(this, Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED)));
+            Combat.WhenReady(this, ability, () =>
+            {
+                Log.Info("mercenaries: " + m_merc.GetName() + " uses " + ability.GetName());
+                InputManager.Get().DoNetworkResponse(ability);
+                // a target to choose: the target menu takes over (next frame)
+                if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return;
+                AccessibilityMgr.Output(this, Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED)));
+            });
         }
     }
 }

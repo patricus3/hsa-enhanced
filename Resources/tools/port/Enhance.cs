@@ -167,6 +167,49 @@ static class Enhance
             o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
             o.Add(pop);
         }, AtStart: true),
+        // a match: our own navigation and card reading, when the player switched it on (Options, Beta)
+        new("Accessibility.AccessibleGameplay", "HandleZoneSelection", "CombatZoneKeys", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleGameplay", "HandleZoneInput", "CombatZoneMove", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleGameplay", "HandleValidOptionsSelectionInput", "CombatValidItems", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleGameplay", "HandleCardReadingInput", "CombatCardLines", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleGameplay", "HandleCheckStatusKeys", "CombatStatusKeys", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleGameplay", "HandleConfirmOrCancel", "CombatConfirmTarget", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
         // a match: E ends the turn without HSA's question when the player turned it off (Options)
         new("Accessibility.AccessibleGameplay", "HandleEndTurnInput", "EndTurnInput", (il, m, hook, o) =>
         {
