@@ -66,8 +66,19 @@ namespace HSAEnhanced
                         exp.NumberOfLevelUps > 0 ? Str.Word("GLUE_LETTUCE_MERCENARY_LEVEL_UP") : null));
                     return Clean(lines);
                 }
-                // the rest: the game's own text for it, and the item its reward screen shows
-                lines.Add(Str.Clean(RewardUtils.GetRewardText(data)));
+                // Mercenary coins: the game's own words for them ("5 Chromie Coins")
+                var coin = data as MercenaryCoinRewardData;
+                if (coin != null)
+                {
+                    var merc = CollectionManager.Get().GetMercenary(coin.MercenaryId);
+                    var name = merc == null ? null : Str.Clean(merc.m_mercShortName ?? merc.m_mercName);
+                    lines.Add(Str.Game("GLUE_LETTUCE_REWARD_MERCENARY_TASK_COINS_REWARD", coin.Quantity, name) ?? Str.Join(coin.Quantity.ToString(), name));
+                    return Clean(lines);
+                }
+                // the rest: the game's own text for it (it says UNKNOWN for types it has none for),
+                // the item its reward screen shows, and what the reward's own data holds
+                var text = Str.Clean(RewardUtils.GetRewardText(data));
+                if (!string.Equals(text, "UNKNOWN", StringComparison.OrdinalIgnoreCase)) lines.Add(text);
                 RewardItemDataModel item = null;
                 try { item = data.CreateRewardItem(); } catch { }
                 if (item != null)
@@ -83,9 +94,48 @@ namespace HSAEnhanced
                         lines.AddRange(parts);
                     }
                 }
+                if (lines.TrueForAll(l => string.IsNullOrEmpty(l))) lines.AddRange(FromData(data, 0));
             }
             catch (Exception e) { Log.Error(e); }
             return Clean(lines);
+        }
+
+        // what a reward's own data holds, read by what it is: a mercenary by its name, an ability or
+        // equipment of that mercenary by its name, a card by its name, amounts, a headline, the
+        // rewards of a list one by one
+        static List<string> FromData(object data, int depth)
+        {
+            var lines = new List<string>();
+            if (data == null || depth > 2) return lines;
+            LettuceMercenary merc = null;
+            var t = data.GetType();
+            var mercId = t.GetProperty("MercenaryId");
+            if (mercId != null && mercId.PropertyType == typeof(int)) merc = CollectionManager.Get().GetMercenary((int)mercId.GetValue(data, null));
+            if (merc != null) lines.Add(Str.Clean(merc.m_mercName));
+            foreach (var p in t.GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+            {
+                if (p.GetIndexParameters().Length > 0 || p.DeclaringType == typeof(RewardData) || p.Name == "MercenaryId") continue;
+                object v;
+                try { v = p.GetValue(data, null); } catch { continue; }
+                if (v == null) continue;
+                var n = p.Name;
+                if (v is int && merc != null && (n.EndsWith("AbilityId") || n.EndsWith("EquipmentId")))
+                {
+                    var ability = merc.GetLettuceAbility((int)v);
+                    if (ability != null) { var m = new LettuceAbilityDataModel(); CollectionUtils.PopulateAbilityDataModel(m, ability, merc); var parts = new List<string>(); Mail.Collect(m, parts, 2); lines.Add(Str.Join(parts.ToArray())); }
+                }
+                else if (v is string && (n == "CardID" || n == "CardId"))
+                {
+                    var def = DefLoader.Get().GetEntityDef((string)v);
+                    if (def != null) lines.Add(Str.Clean(def.GetName()));
+                }
+                else if (v is int && (n == "Quantity" || n == "Amount" || n == "Count") && (int)v > 0) lines.Add(v.ToString());
+                else if (v is string && n.EndsWith("Text")) lines.Add(Str.Clean((string)v));
+                else if (v is System.Collections.IEnumerable && !(v is string))
+                    foreach (var item in (System.Collections.IEnumerable)v)
+                        if (item is RewardData) lines.AddRange(Describe((RewardData)item));
+            }
+            return lines;
         }
 
         static List<string> Clean(List<string> lines)

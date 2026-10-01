@@ -351,8 +351,10 @@ namespace HSAEnhanced
             {
                 AccessibleMenu.GetTextDelegate qty = () => Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
                 m_menu.AddOption(qty, () => Output(qty()));
-                m_menu.AddOption("+", () => Adjust("INCREASE_PURCHASE_QUANTITY", qty, price));
-                m_menu.AddOption("-", () => Adjust("DECREASE_PURCHASE_QUANTITY", qty, price));
+                // "+1" is the game's text for such a button; a bare "-" is silent in screen readers
+                var plus = Str.Word("GLUE_BATTLEBASH_PURCHASE_PLUS1");
+                m_menu.AddOption(plus.Length > 0 ? plus : "+1", () => Adjust("INCREASE_PURCHASE_QUANTITY", qty, price));
+                m_menu.AddOption("-1", () => Adjust("DECREASE_PURCHASE_QUANTITY", qty, price));
             }
 
             if (item.ItemStock != 0 && !item.IsLocked)
@@ -361,10 +363,18 @@ namespace HSAEnhanced
 
             // haggling is offered during the grace period, once per item
             var mgr = BlackMarketEventManager.Get();
-            if (mgr != null && mgr.IsCurrentEventInGracePeriod && item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_NONE && item.ItemStock != 0)
+            // (the game's popup follows the server's InGracePeriod in its global data model; the local timing
+            // may lag behind it)
+            var global = mgr == null ? null : Ref.Get<Hearthstone.DataModels.BlackMarketGlobalDataModel>(mgr, "m_blackMarketGlobalDataModel");
+            bool grace = mgr != null && (mgr.IsCurrentEventInGracePeriod || (global != null && global.InGracePeriod));
+            if (grace && item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_NONE && item.ItemStock != 0)
                 m_menu.AddOption(Str.Word("GLUE_BLACK_MARKET_HAGGLE_OFFER"), () => Send("BLACK_MARKET_HAGGLE_BUTTON_CLICKED"));
 
             m_menu.AddOption(Str.Back, Close);
+            var labels = new List<string>();
+            var list = MenuEdit.List(m_menu);
+            if (list != null) foreach (var o in list) labels.Add(MenuEdit.TextOf(o));
+            Log.Info("Black Market item: " + string.Join(" | ", labels.ToArray()) + (mgr == null ? "" : " (grace period " + grace + ", haggle " + item.HaggleStatus + ")"));
         }
 
         void Adjust(string ev, AccessibleMenu.GetTextDelegate qty, AccessibleMenu.GetTextDelegate price)

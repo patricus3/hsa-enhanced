@@ -41,6 +41,7 @@ namespace HSAEnhanced
             var display = cm == null ? null : cm.GetCollectibleDisplay() as LettuceCollectionDisplay;
             var tray = CollectionDeckTray.Get();
             if (display == null || tray == null) return false;
+            ApplyPending(cm);
             // a party being edited: read as it changes (the tray keeps animating while mercenaries
             // are added and removed, and the menu has to follow at once)
             var editing = cm.IsInEditTeamMode() ? cm.GetEditingTeam() : null;
@@ -154,6 +155,30 @@ namespace HSAEnhanced
             return Str.Clean(text);
         }
 
+        // Upgrades sent from here. The game raises the tier when the server answers, but only in its
+        // detail page's handler and only for the mercenary that page shows (MercenariesDataUtil
+        // .UpdateMercenaryDataModelWithNewData); the server upgraded, the client kept the old tier and
+        // every retry was refused. Once the coins show the server took the price, the tier is raised
+        // the same way; a refused upgrade leaves the coins, and nothing changes.
+        class Pending { internal int Merc; internal LettuceAbility Ability; internal int FromTier; internal long Coins; internal int Cost; internal float Until; }
+        static readonly List<Pending> s_pending = new List<Pending>();
+
+        static void ApplyPending(CollectionManager cm)
+        {
+            for (int i = s_pending.Count - 1; i >= 0; i--)
+            {
+                var p = s_pending[i];
+                var merc = cm.GetMercenary(p.Merc);
+                var a = p.Ability;
+                if (merc == null || a == null || a.m_tier != p.FromTier || Time.unscaledTime > p.Until) { s_pending.RemoveAt(i); continue; }
+                if (merc.m_currencyAmount > p.Coins - p.Cost) continue;     // no answer yet
+                if (a.m_cardType == CollectionUtils.MercenariesModeCardType.Equipment && !a.Owned) { a.Owned = true; a.m_tier = a.GetBaseTier(); }
+                else a.m_tier = a.GetNextTier();
+                Log.Info("mercenaries: upgraded " + a.GetCardName() + " of " + merc.m_mercName + " to tier " + a.m_tier);
+                s_pending.RemoveAt(i);
+            }
+        }
+
         static void AbilityItem(List<GameButton> items, LettuceMercenary merc, LettuceAbility a, bool slotted)
         {
             bool equipment = a.m_cardType == CollectionUtils.MercenariesModeCardType.Equipment;
@@ -173,9 +198,11 @@ namespace HSAEnhanced
             var anchor = CollectionDeckTray.Get();
             Mercenaries.Item(items, anchor, label, () =>
             {
+                if (s_pending.Exists(p => p.Merc == merc.ID && p.Ability == a)) return;     // one on its way already
                 if (canUpgrade)
                 {
                     Log.Info("mercenaries: upgrade " + name + " of " + merc.m_mercName + " to tier " + (a.m_tier + 1));
+                    s_pending.Add(new Pending { Merc = merc.ID, Ability = a, FromTier = a.m_tier, Coins = merc.m_currencyAmount, Cost = a.GetNextUpgradeCost(), Until = Time.unscaledTime + 30f });
                     if (equipment) Network.Get().UpgradeMercenaryEquipment(merc.ID, a.ID, (uint)(a.m_tier + 1));
                     else Network.Get().UpgradeMercenaryAbility(merc.ID, a.ID, (uint)(a.m_tier + 1));
                     Say(Str.Join(Str.Word("GLUE_LETTUCE_ABILITY_UPGRADE_TITLE"), name));

@@ -77,7 +77,8 @@ namespace HSAEnhanced
             // (a treasure or visitor pick on the map is a popup the map's menu reads, with each one's text)
             return Active > 0 && (s_pickShown || IsPickPopup(go)
                                   || go.GetComponentInChildren<LettuceVillageZonePortal>(true) != null || go.GetComponentInParent<LettuceVillageZonePortal>() != null
-                                  || go.GetComponentInChildren<LettuceVillageWorkshop>(true) != null || go.GetComponentInParent<LettuceVillageWorkshop>() != null);
+                                  || go.GetComponentInChildren<LettuceVillageWorkshop>(true) != null || go.GetComponentInParent<LettuceVillageWorkshop>() != null
+                                  || go.GetComponentInChildren<LettuceVillageTaskBoard>(true) != null || go.GetComponentInParent<LettuceVillageTaskBoard>() != null);
         }
 
         static bool s_pickShown;    // the map's menu is a treasure or visitor pick
@@ -105,6 +106,7 @@ namespace HSAEnhanced
         {
             key = null; title = ""; items = new List<GameButton>();
             s_pickShown = false;
+            if ((mode == SceneMgr.Mode.LETTUCE_VILLAGE || mode == SceneMgr.Mode.LETTUCE_MAP) && CampfireOpen()) return CampfireMenu(ref key, ref title, items);
             switch (mode)
             {
                 case SceneMgr.Mode.LETTUCE_VILLAGE: return Village(ref key, ref title, items);
@@ -210,11 +212,55 @@ namespace HSAEnhanced
             return true;
         }
 
+        static bool CampfireOpen()
+        {
+            var popups = LettuceVillagePopupManager.Get();
+            return popups != null && popups.CurrentlyOpenPopup == LettuceVillagePopupManager.PopupType.TASKBOARD;
+        }
+
+        // The Campfire (village, and on the map after a fight, which waits until it is closed): every
+        // task as its card shows it; a finished one is claimed as the game's Claim button does; Close
+        static bool CampfireMenu(ref string key, ref string title, List<GameButton> items)
+        {
+            var board = UnityEngine.Object.FindObjectOfType<LettuceVillageTaskBoard>();
+            if (board == null) return false;
+            var model = Ref.Get<MercenaryVillageTaskBoardDataModel>(board, "m_dataModel");
+            key = "campfire";
+            title = Str.Word("GLUE_LETTUCE_VILLAGE_TASK_TITLE");
+            if (model != null && model.TaskListRow != null)
+                foreach (var row in model.TaskListRow)
+                {
+                    if (row == null || row.TaskList == null) continue;
+                    foreach (var task in row.TaskList)
+                    {
+                        if (task == null || string.IsNullOrEmpty(task.Title)) continue;
+                        bool done = (int)task.TaskStatus == 3 || (task.ProgressNeeded > 0 && task.Progress >= task.ProgressNeeded);
+                        var label = Str.Join(done ? Str.Word("GLUE_LETTUCE_VILLAGE_TASK_COMPLETE") : null, Campfire.Describe(task), done ? Str.Word("GLUE_LETTUCE_VILLAGE_TASK_CLAIM") : null);
+                        var t = task;
+                        Item(items, board, label, () =>
+                        {
+                            if (!done) { Say(label); return; }
+                            Log.Info("mercenaries: claim task " + t.TaskId + " " + t.Title);
+                            LettuceTaskUtil.ClaimTask(t.TaskId);
+                            Say(Str.Join(Str.Word("GLUE_LETTUCE_VILLAGE_TASK_CLAIM"), Str.Clean(t.Title)));
+                        });
+                    }
+                }
+            Item(items, board, Str.Word("GLOBAL_CLOSE"), () =>
+            {
+                Log.Info("mercenaries: close the campfire");
+                var popups = LettuceVillagePopupManager.Get();
+                popups.Hide(LettuceVillagePopupManager.PopupType.TASKBOARD);
+                if (popups.CurrentlyOpenPopup == LettuceVillagePopupManager.PopupType.TASKBOARD) Say(Str.Unavailable);   // busy (rewards on show)
+            });
+            return true;
+        }
+
         // Back in a village popup closes the popup (the game's back navigation leaves the village)
         internal static bool CloseVillagePopup()
         {
             var scenes = SceneMgr.Get();
-            if (scenes == null || scenes.GetMode() != SceneMgr.Mode.LETTUCE_VILLAGE) return false;
+            if (scenes == null || (scenes.GetMode() != SceneMgr.Mode.LETTUCE_VILLAGE && !(scenes.GetMode() == SceneMgr.Mode.LETTUCE_MAP && CampfireOpen()))) return false;
             var popups = LettuceVillagePopupManager.Get();
             if (popups == null || popups.CurrentlyOpenPopup == LettuceVillagePopupManager.PopupType.INVALID) return false;
             Log.Info("mercenaries: close " + popups.CurrentlyOpenPopup);

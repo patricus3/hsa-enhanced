@@ -167,6 +167,81 @@ static class Enhance
             o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
             o.Add(pop);
         }, AtStart: true),
+        // a match: E ends the turn without HSA's question when the player turned it off (Options)
+        new("Accessibility.AccessibleGameplay", "HandleEndTurnInput", "EndTurnInput", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // the journal: ours, from the game's data (HSA's clicked tabs and read screen objects by path);
+        // HSA's journal reactions stay quiet while ours is open
+        new("Accessibility.AccessibleJournal", "OnJournalOpened", "JournalOpened", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnJournalClosed", "JournalClosed", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "ReadJournal", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnQuestRerolled", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnQuestAbandoned", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnQuestAbandonCancel", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnTrackRewardAckd", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnAchievementClaimed", "JournalQuiet", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibleJournal", "OnTabChanged", "JournalTabChanged", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            var pop = il.Create(OpCodes.Pop);
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Dup)); o.Add(il.Create(OpCodes.Brfalse, pop));
+            o.Add(il.Create(OpCodes.Castclass, m.ReturnType)); o.Add(il.Create(OpCodes.Ret));
+            o.Add(pop);
+        }, AtStart: true),
         // rewards HSA's reader does not know ("1 unknown reward": Mercenaries rewards, skins, pets, ...)
         new("Accessibility.AccessibleRewardData", "GetLines", "RewardLines", (il, m, hook, o) =>
         {

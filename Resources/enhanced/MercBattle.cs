@@ -36,12 +36,50 @@ namespace HSAEnhanced
             get { var gs = GameState.Get(); return gs.IsActionStep() && gs.GetActionStepType() == ACTION_STEP_TYPE.DEFAULT; }
         }
 
+        // the mercenaries on the board last frame (entity id -> name), to say who died
+        static readonly Dictionary<int, string> s_onBoard = new Dictionary<int, string>();
+
+        // HSA's snapshots of the game follow the turn steps of normal games and say nothing of deaths in
+        // Mercenaries: a mercenary that leaves the board for the graveyard is said here ("X died")
+        static void TickDeaths()
+        {
+            var gs = GameState.Get();
+            var now = new Dictionary<int, string>();
+            foreach (var side in new[] { Player.Side.FRIENDLY, Player.Side.OPPOSING })
+            {
+                var zone = ZoneMgr.Get() == null ? null : ZoneMgr.Get().FindZoneOfType<ZonePlay>(side);
+                if (zone == null) continue;
+                foreach (var c in zone.GetCards())
+                {
+                    var e = c == null ? null : c.GetEntity();
+                    if (e != null) now[e.GetEntityId()] = Str.Clean(e.GetName());
+                }
+            }
+            var died = new List<string>();
+            foreach (var kv in s_onBoard)
+            {
+                if (now.ContainsKey(kv.Key)) continue;
+                var e = gs.GetEntity(kv.Key);
+                if (e == null) continue;
+                var z = e.GetZone();
+                if (z == TAG_ZONE.GRAVEYARD || z == TAG_ZONE.REMOVEDFROMGAME || (z != TAG_ZONE.HAND && e.GetCurrentHealth() <= 0)) died.Add(kv.Value);
+            }
+            s_onBoard.Clear();
+            foreach (var kv in now) s_onBoard[kv.Key] = kv.Value;
+            if (died.Count == 0) return;
+            var text = Str.Join(Str.Join(died.ToArray()), LocalizationUtils.Get(died.Count > 1 ? LocalizationKey.GAMEPLAY_DIFF_MULTIPLE_ENTITIES_DIED : LocalizationKey.GAMEPLAY_DIFF_ENTITY_DIED));
+            Log.Info("mercenaries: " + text);
+            AccessibilityMgr.Output(AccessibleGameplay.Get(), text);
+        }
+
         // every frame, from FallbackWatcher
         internal static void Tick()
         {
             try
             {
-                if (!InBattle || !AccessibilityMgr.IsAccessibilityEnabled() || GameState.Get().IsGameOver()) { Hide(); return; }
+                if (!InBattle || !AccessibilityMgr.IsAccessibilityEnabled()) { s_onBoard.Clear(); Hide(); return; }
+                TickDeaths();
+                if (GameState.Get().IsGameOver()) { Hide(); return; }
                 var gs = GameState.Get();
                 // an ability waiting for its target: the targets the game allows
                 if (gs.IsInTargetMode())

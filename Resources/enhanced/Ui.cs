@@ -43,9 +43,19 @@ namespace HSAEnhanced
         static readonly Regex Placeholder = new Regex(@"<PH>\s*");
 
         // Spoken form of on-screen text: markup and the "<PH>" placeholder marker removed
+        static readonly System.Text.RegularExpressions.Regex GameKey = new System.Text.RegularExpressions.Regex("^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$");
+
         internal static string Clean(string text)
         {
             if (string.IsNullOrEmpty(text)) return "";
+            // a text that is still the game's string key (the game looks it up when it draws it): its
+            // text, and nothing when the game has none (then it shows nothing either)
+            var key = text.Trim();
+            if (GameKey.IsMatch(key))
+            {
+                if (!GameStrings.HasKey(key)) return "";
+                text = GameStrings.Get(key);
+            }
             text = Placeholder.Replace(text, "");
             text = AccessibilityUtils.CurateText(text);
             return text.TrimEnd('.', ':', ' ');
@@ -730,6 +740,13 @@ namespace HSAEnhanced
         // why buttons were left out in the last scan, for the log
         static readonly Dictionary<string, int> s_leftOut = new Dictionary<string, int>();
 
+        static bool InVillage()
+        {
+            var scenes = SceneMgr.Get();
+            var mode = scenes == null ? SceneMgr.Mode.INVALID : scenes.GetMode();
+            return mode == SceneMgr.Mode.LETTUCE_VILLAGE || mode == SceneMgr.Mode.LETTUCE_MAP;
+        }
+
         static void LeftOut(string why) { int n; s_leftOut.TryGetValue(why, out n); s_leftOut[why] = n + 1; }
 
         static void Add(Component c, Func<GameObject, bool> exclude, bool visibleOnly, List<GameButton> found, HashSet<GameObject> seen, HashSet<string> labels)
@@ -739,6 +756,9 @@ namespace HSAEnhanced
             if (visibleOnly && !IsVisible(c)) { LeftOut("not drawn"); return; }
             // the village Campfire's task cards stay drawn behind other screens (its own menu reads them)
             if (visibleOnly && c.GetComponentInParent<Hearthstone.LettuceVillageTaskBoard>() != null) { LeftOut("campfire task"); return; }
+            // the village's popups (the Campfire's task list and the others) stay loaded after the
+            // village is left: none of their buttons belong to the screens after it
+            if (!InVillage() && c.GetComponentInParent<Hearthstone.LettuceVillagePopupManager>() != null) { LeftOut("village popup"); return; }
             if (!seen.Add(c.gameObject)) return;
             if (exclude != null && UnderAny(c.transform, exclude)) { LeftOut("bar or box out of view"); return; }
             var label = LabelOf(c);

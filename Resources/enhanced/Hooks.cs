@@ -158,6 +158,43 @@ namespace HSAEnhanced
             catch (Exception e) { Log.Error(e); return false; }
         }
 
+        // start of HSA's AccessibleGameplay.HandleEndTurnInput(); true: E ended the turn without asking
+        public static bool EndTurnInput(object gameplay)
+        {
+            try { return Settings.EndTurnWithoutAsking(gameplay); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleJournal.OnJournalOpened(widget, type); true: our journal instead
+        public static bool JournalOpened(object journal)
+        {
+            try { return Journal.Open(); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleJournal.OnJournalClosed(): ours goes too (HSA's cleanup runs)
+        public static bool JournalClosed(object journal)
+        {
+            try { Journal.Close(); } catch (Exception e) { Log.Error(e); }
+            return false;
+        }
+
+        // start of HSA's journal reactions (reading, quest and reward events); true: ours is open, skipped
+        public static bool JournalQuiet(object journal)
+        {
+            try { return Journal.Active; }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of HSA's AccessibleJournal.OnTabChanged(data) (a coroutine); non-null: an empty one instead
+        public static object JournalTabChanged(object journal)
+        {
+            try { return Journal.Active ? EmptyRoutine() : null; }
+            catch (Exception e) { Log.Error(e); return null; }
+        }
+
+        static System.Collections.IEnumerator EmptyRoutine() { yield break; }
+
         // start of HSA's AccessibleRewardData.GetLines(); non-null: these lines instead of HSA's
         public static object RewardLines(object reward)
         {

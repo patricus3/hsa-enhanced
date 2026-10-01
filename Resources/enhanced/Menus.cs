@@ -144,7 +144,17 @@ namespace HSAEnhanced
             if (parent is FallbackUI || parent is SetRotationUI || parent is MercScreen || parent is MercAbilityUI || parent is AccessiblePlayScreen || parent is AccessiblePets) return;   // ours, built from the screen already
             // the collection's Browse Collection menu and deck menu: Pets (HSA leaves them out)
             if (parent is AccessibleCollectionManager && Engine.Enabled && GameState.Get() == null) Pets.AddTo(menu, parent);
-            if (BuiltWholeByHsa(parent)) { if (GameState.Get() == null && Engine.Enabled) MarkLocked(menu); return; }
+            if (BuiltWholeByHsa(parent))
+            {
+                if (GameState.Get() == null && Engine.Enabled)
+                {
+                    // (not the journal: its options press its tab buttons, and the game disables the button
+                    // of the tab on show; its Events option went away with the Events tab open)
+                    if (parent is AccessibleJournal) { JournalTrack.CheckEvents(menu, parent); JournalTrack.AddLevels(menu, parent); }     // Events, what the reward track gives
+                    else MarkLocked(menu);
+                }
+                return;
+            }
             var root = parent as Component;
             s_open = menu;
             if (GameState.Get() == null)
@@ -332,7 +342,8 @@ namespace HSAEnhanced
         // friend's challenge and chat buttons and its headers, which would be added to each of them)
         static bool BuiltWholeByHsa(object parent)
         {
-            return parent is FriendListFrame;
+            // (the journal too: its tabs' tiles, e.g. every achievement, were added to all of its menus)
+            return parent is FriendListFrame || parent is AccessibleJournal;
         }
 
         // the menu is still one of its owner's (not an old one it replaced)

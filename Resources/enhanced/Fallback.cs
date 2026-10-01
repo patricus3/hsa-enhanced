@@ -313,9 +313,24 @@ namespace HSAEnhanced
                 var labels = new List<string>();
                 foreach (var b in found) labels.Add(b.Label);
                 var title = Ref.Get(m_menu, "m_menuName") as string;
+                // Mercenaries coins (rewards, consolation prizes): each coin one line, "2 Tess Greymane
+                // Coins", in place of its loose name and number
+                var coinRoots = new List<Transform>();
+                var coinModels = new HashSet<object>();
+                foreach (var w in m_root.GetComponentsInChildren<Widget>(false))
+                {
+                    var coin = w.GetDataModel<Hearthstone.DataModels.LettuceMercenaryCoinDataModel>();
+                    if (coin == null || string.IsNullOrEmpty(coin.MercenaryName)) continue;
+                    coinRoots.Add(w.transform);
+                    if (!coinModels.Add(coin)) continue;
+                    var said = Str.Game("GLUE_LETTUCE_REWARD_MERCENARY_TASK_COINS_REWARD", coin.Quantity, Str.Clean(coin.MercenaryName)) ?? (coin.Quantity + " " + Str.Clean(coin.MercenaryName));
+                    labels.Add(said);
+                    found.Add(new GameButton { Target = w, Label = said, Click = () => AccessibilityMgr.Output(ui, said) });
+                }
                 foreach (var t in Ui.TextsUnder(m_root))
                 {
                     if (labels.Contains(t.Value) || (title != null && title.EndsWith(t.Value))) continue;
+                    if (UnderAny(t.Key.transform, coinRoots)) continue;
                     var text = t.Value;
                     labels.Add(text);
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => AccessibilityMgr.Output(ui, text) });
@@ -341,6 +356,12 @@ namespace HSAEnhanced
                 return book;
             }
             return found;
+        }
+
+        static bool UnderAny(Transform t, List<Transform> roots)
+        {
+            for (; t != null; t = t.parent) if (roots.Contains(t)) return true;
+            return false;
         }
 
         static bool Under(Transform t, GameObject root)

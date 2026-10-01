@@ -18,6 +18,13 @@ namespace HSAEnhanced
         internal static List<GameButton> Buttons(OptionsMenu options)
         {
             var found = new List<GameButton>();
+            // ours: whether E asks first when plays are left (Shift+E never asks)
+            var label = Str.Join(Str.Word("GAMEPLAY_END_TURN"), Str.Word("GLOBAL_CONFIRM"), Pets.Checked(Settings.ConfirmEndTurn));
+            found.Add(new GameButton { Target = options, Label = label, Click = () =>
+            {
+                Settings.ConfirmEndTurn = !Settings.ConfirmEndTurn;
+                AccessibilityMgr.OutputNotification(Pets.Checked(Settings.ConfirmEndTurn));
+            } });
             AddDropdown(found, options, options.m_languageDropdown, "GLOBAL_LANGUAGE_DROPDOWN");
             AddDropdown(found, options, options.m_signatureTextDisplayDropdown, "GLOBAL_OPTIONS_ADVANCED_SIGNATURE");
             foreach (var b in Ui.ClickablesUnder(options.gameObject, go =>
