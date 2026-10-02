@@ -27,7 +27,7 @@ namespace HSAEnhanced
             var card = CardBeingRead(gameplay);
             if (card == null || !InFriendlyHand(card) || OnCard(card)) return false;
             Log.Info("hand: pointer not on " + card.GetEntity().GetName() + " yet, waiting for the hand to settle");
-            FallbackWatcher.Run(ClickWhenOnCard(gameplay, card, performingDeckAction, ++s_waiting));
+            Core.Jobs.Run(ClickWhenOnCard(gameplay, card, performingDeckAction, ++s_waiting));
             return true;
         }
 

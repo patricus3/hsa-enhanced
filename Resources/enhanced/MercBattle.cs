@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Accessibility;
+using HSAEnhanced.Core;
 using UnityEngine;
 
 namespace HSAEnhanced
@@ -67,9 +67,9 @@ namespace HSAEnhanced
             s_onBoard.Clear();
             foreach (var kv in now) s_onBoard[kv.Key] = kv.Value;
             if (died.Count == 0) return;
-            var text = Str.Join(Str.Join(died.ToArray()), LocalizationUtils.Get(died.Count > 1 ? LocalizationKey.GAMEPLAY_DIFF_MULTIPLE_ENTITIES_DIED : LocalizationKey.GAMEPLAY_DIFF_ENTITY_DIED));
+            var text = Str.Join(Str.Join(died.ToArray()), Speech.S(died.Count > 1 ? K.GAMEPLAY_DIFF_MULTIPLE_ENTITIES_DIED : K.GAMEPLAY_DIFF_ENTITY_DIED));
             Log.Info("mercenaries: " + text);
-            AccessibilityMgr.Output(AccessibleGameplay.Get(), text);
+            MatchVoice.Say(text);
         }
 
         // every frame, from FallbackWatcher
@@ -77,7 +77,7 @@ namespace HSAEnhanced
         {
             try
             {
-                if (!InBattle || !AccessibilityMgr.IsAccessibilityEnabled()) { s_onBoard.Clear(); Hide(); return; }
+                if (!InBattle || !true) { s_onBoard.Clear(); Hide(); return; }
                 TickDeaths();
                 if (GameState.Get().IsGameOver()) { Hide(); return; }
                 var gs = GameState.Get();
@@ -113,7 +113,7 @@ namespace HSAEnhanced
         static void Show(MercMenuUI ui)
         {
             s_ui = ui;
-            AccessibilityMgr.ShowUI(ui);
+            Core.Focus.Push(ui);
             ui.Start();
         }
 
@@ -122,7 +122,7 @@ namespace HSAEnhanced
             if (s_ui == null) return;
             var ui = s_ui;
             s_ui = null;
-            AccessibilityMgr.HideUI(ui);
+            Core.Focus.Pop(ui);
         }
 
         internal static void Dismissed(Entity source)
@@ -140,7 +140,7 @@ namespace HSAEnhanced
             if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return false;
             var merc = card.GetEntity();
             if (merc == null || !merc.IsMercenary()) return false;
-            var gameplay = AccessibleGameplay.Get();
+            var gameplay = MatchVoice.Speaker;
             if (merc.IsControlledByFriendlySidePlayer() && card.GetZone() is ZoneHand) return Nominate(merc, gameplay);
             if (card.GetZone() is ZonePlay)
             {
@@ -153,7 +153,7 @@ namespace HSAEnhanced
                 }
                 if (!merc.IsControlledByFriendlySidePlayer())
                 {
-                    AccessibilityMgr.Output(gameplay, Prepared(merc));
+                    MatchVoice.Say(Prepared(merc));
                     return true;
                 }
             }
@@ -161,12 +161,12 @@ namespace HSAEnhanced
         }
 
         // a mercenary from the bench into play, at the right end (as dropped there)
-        static bool Nominate(Entity merc, AccessibleComponent speaker)
+        static bool Nominate(Entity merc, object speaker)
         {
             var gs = GameState.Get();
             if (!Nominating || !gs.IsValidOption(merc))
             {
-                AccessibilityMgr.Output(speaker, Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
+                MatchVoice.Say(Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
                 return true;
             }
             var play = ZoneMgr.Get().FindZoneOfType<ZonePlay>(Player.Side.FRIENDLY);
@@ -176,7 +176,7 @@ namespace HSAEnhanced
                 gs.SetSelectedOptionPosition(pos);
                 Log.Info("mercenaries: " + merc.GetName() + " into play at " + pos);
                 if (!InputManager.Get().DoNetworkResponse(merc))
-                    AccessibilityMgr.Output(speaker, Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
+                    MatchVoice.Say(Str.Join(Str.Clean(merc.GetName()), Str.Unavailable));
             });
             return true;
         }
@@ -205,7 +205,7 @@ namespace HSAEnhanced
         internal static string Describe(Entity ability, bool queued)
         {
             var parts = new List<string> { Str.Clean(ability.GetName()) };
-            if (queued) parts.Add(LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED));
+            if (queued) parts.Add(Core.Speech.S(Core.K.OPTIONS_MENU_CHECKBOX_CHECKED));
             if (ability.HasTag(GAME_TAG.LETTUCE_PASSIVE_ABILITY)) parts.Add(Str.Word("GLOBAL_KEYWORD_PASSIVE"));
             else parts.Add(Str.Word("GAMEPLAY_LETTUCE_SPEED_LABEL_TUTORIAL") + " " + ability.GetCost());
             int cooldown = ability.GetTag(GAME_TAG.LETTUCE_CURRENT_COOLDOWN);
@@ -218,10 +218,10 @@ namespace HSAEnhanced
     }
 
     // a menu of ours over the battle
-    abstract class MercMenuUI : AccessibleUI
+    abstract class MercMenuUI : Core.Screen
     {
         internal readonly string Key;
-        protected AccessibleMenu m_menu;
+        protected Core.Menu m_menu;
         readonly List<string> m_labels = new List<string>();
 
         protected MercMenuUI(string key) { Key = key; }
@@ -236,9 +236,11 @@ namespace HSAEnhanced
 
         internal void Start() { m_menu.StartReading(); }
 
-        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
+        internal override string Help() { return m_menu.GetHelp(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 
     // the targets the chosen ability may go to (the game's list for its option), enemies first; each as
@@ -249,8 +251,8 @@ namespace HSAEnhanced
         {
             var gs = GameState.Get();
             var owner = ability.GetLettuceAbilityOwner();
-            var title = Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.GAMEPLAY_CHOOSE_TARGET));
-            m_menu = new AccessibleMenu(this, title, () => { Log.Info("mercenaries: target choice cancelled"); InputManager.Get().CancelTargetMode(); });
+            var title = Str.Join(Str.Clean(ability.GetName()), Core.Speech.S(Core.K.GAMEPLAY_CHOOSE_TARGET));
+            m_menu = new Core.Menu(this, title, () => { Log.Info("mercenaries: target choice cancelled"); InputManager.Get().CancelTargetMode(); });
             foreach (var side in new[] { Player.Side.OPPOSING, Player.Side.FRIENDLY })
             {
                 var zone = ZoneMgr.Get().FindZoneOfType<ZonePlay>(side);
@@ -266,7 +268,7 @@ namespace HSAEnhanced
                     Add(label, () => Combat.WhenReady(this, t, () =>
                     {
                         Log.Info("mercenaries: " + ability.GetName() + " at " + t.GetName());
-                        if (!InputManager.Get().DoNetworkResponse(t)) AccessibilityMgr.Output(this, Str.Join(Str.Clean(t.GetName()), Str.Unavailable));
+                        if (!InputManager.Get().DoNetworkResponse(t)) Say(Str.Join(Str.Clean(t.GetName()), Str.Unavailable));
                     }));
                 }
             }
@@ -280,7 +282,7 @@ namespace HSAEnhanced
         internal MercAbilityUI(Entity merc, string key) : base(key)
         {
             m_merc = merc;
-            m_menu = new AccessibleMenu(this, MercBattle.Describe(merc), () => MercBattle.Dismissed(m_merc));
+            m_menu = new Core.Menu(this, MercBattle.Describe(merc), () => MercBattle.Dismissed(m_merc));
             var gs = GameState.Get();
             int queued = merc.GetSelectedLettuceAbilityID();
             // the abilities the tray shows (the game's own choice of cards), else the mercenary's own list
@@ -312,7 +314,7 @@ namespace HSAEnhanced
                 string text = null;
                 try { text = equipment.GetCardTextInHand(); } catch { }
                 var said = Str.Join(Str.Clean(equipment.GetName()), Str.Clean(text));
-                Add(said, () => AccessibilityMgr.Output(this, said));
+                Add(said, () => Say(said));
             }
             var ready = ReadyText();
             if (ready.Length > 0) Add(ready, () => { Log.Info("mercenaries: " + ready); InputManager.Get().DoEndTurnButton(); });
@@ -336,7 +338,7 @@ namespace HSAEnhanced
                 // why not, as the game says it (cooldown, passive ...)
                 int cooldown = ability.GetTag(GAME_TAG.LETTUCE_CURRENT_COOLDOWN);
                 var why = cooldown > 0 ? Str.Game("GAMEPLAY_PlayErrors_REQ_NOT_IN_COOLDOWN", cooldown) : Str.Join(Str.Clean(ability.GetName()), Str.Unavailable);
-                AccessibilityMgr.Output(this, why);
+                Say(why);
                 return;
             }
             Combat.WhenReady(this, ability, () =>
@@ -345,7 +347,7 @@ namespace HSAEnhanced
                 InputManager.Get().DoNetworkResponse(ability);
                 // a target to choose: the target menu takes over (next frame)
                 if (gs.IsInTargetMode() || gs.IsInSubOptionMode()) return;
-                AccessibilityMgr.Output(this, Str.Join(Str.Clean(ability.GetName()), LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED)));
+                Say(Str.Join(Str.Clean(ability.GetName()), Core.Speech.S(Core.K.OPTIONS_MENU_CHECKBOX_CHECKED)));
             });
         }
     }

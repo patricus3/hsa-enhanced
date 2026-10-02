@@ -21,6 +21,16 @@
     <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
     <NoWarn>$(NoWarn);CS0618;MSB3277;MSB3270</NoWarn>
   </PropertyGroup>
+  <!-- -p:WithoutHsa=true: only our own core and the screens built on it, for a game without
+       Hearthstone Access (HsaAssembly is then the game's own Assembly-CSharp) -->
+  <PropertyGroup Condition="'$(WithoutHsa)' == 'true'">
+    <DefineConstants>$(DefineConstants);WITHOUT_HSA</DefineConstants>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WithoutHsa)' == 'true'">
+    <!-- what only makes sense on top of Hearthstone Access (its screens extended, its hooks) -->
+    <Compile Remove="Hooks.cs;MenuEdit.cs;Fallback.cs;Menus.cs;HubMenu.cs;GameModesMenu.cs;AdventureMenu.cs;PlayScreen.cs;JournalTrack.cs;OptionsScreen.cs;HandClick.cs;Book.cs;Runes.cs" />
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="$(GameManaged)\*.dll"
                Exclude="$(GameManaged)\Assembly-CSharp.dll;$(GameManaged)\HSAEnhanced.dll;$(GameManaged)\HSACompat.dll;$(GameManaged)\TolkDotNet.dll"

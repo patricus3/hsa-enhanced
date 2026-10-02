@@ -63,7 +63,7 @@ namespace HSAEnhanced
             var config = AdventureConfig.Get();
             if (config == null) return;
             if (config.GetSelectedAdventure() != adventure || config.GetSelectedMode() != mode) config.SetSelectedAdventureMode(adventure, mode);
-            FallbackWatcher.Run(PressChooseWhenSaved(scene));
+            Core.Jobs.Run(PressChooseWhenSaved(scene));
         }
 
         static System.Collections.IEnumerator PressChooseWhenSaved(object scene)

@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Accessibility;
+using HSAEnhanced.Core;
 using Hearthstone;
 using Hearthstone.DataModels;
 using Hearthstone.UI;
@@ -33,16 +33,18 @@ namespace HSAEnhanced
             try
             {
                 var scenes = SceneMgr.Get();
-                bool here = AccessibilityMgr.IsAccessibilityEnabled() && GameState.Get() == null && scenes != null && IsMercMode(scenes.GetMode());
+                bool here = GameState.Get() == null && scenes != null && IsMercMode(scenes.GetMode());
                 if (!here) { Leave(); return; }
+#if !WITHOUT_HSA
                 // HSA's keys off with no text box open (a name box that closed some other way):
                 // on again, never stuck
                 var typing = UniversalInputManager.Get();
-                if (AccessibilityMgr.IsTextInputAllowed() && typing != null && !typing.IsTextInputActive())
+                if (Accessibility.AccessibilityMgr.IsTextInputAllowed() && typing != null && !typing.IsTextInputActive())
                 {
                     Log.Info("mercenaries: text box gone, HSA's keys on again");
-                    AccessibilityMgr.DisallowTextInput();
+                    Accessibility.AccessibilityMgr.DisallowTextInput();
                 }
+#endif
                 if (scenes.IsTransitioning()) return;
                 string key, title; List<GameButton> items;
                 if (!Build(scenes.GetMode(), out key, out title, out items)) return;   // still loading: the menu stays as it was
@@ -50,6 +52,10 @@ namespace HSAEnhanced
                 {
                     s_screen = new MercScreen();
                     Active++;
+#if WITHOUT_HSA
+                    Generic.Yield();
+#endif
+                    Focus.PushBase(s_screen);
                 }
                 s_screen.Show(key, title, items);
             }
@@ -66,8 +72,9 @@ namespace HSAEnhanced
         static void Leave()
         {
             if (s_screen == null) return;
-            if (AccessibilityMgr.IsCurrentlyFocused(s_screen)) AccessibilityMgr.TransitioningScreens();
+            var old = s_screen;
             s_screen = null;
+            Focus.Pop(old);
             Active--;
         }
 
@@ -118,7 +125,7 @@ namespace HSAEnhanced
             return false;
         }
 
-        internal static void Say(string text) { if (s_screen != null && text.Length > 0) AccessibilityMgr.Output(s_screen, text); }
+        internal static void Say(string text) { if (s_screen != null && text.Length > 0) s_screen.Say(text); }
 
         internal static void Item(List<GameButton> items, Component target, string label, Action click)
         {
@@ -173,7 +180,7 @@ namespace HSAEnhanced
             return Str.Join(Str.Clean(m.MercenaryName), Str.Clean(role), m.MercenaryLevel > 0 ? Str.Game("GLUE_LETTUCE_BOUNTY_POSTER_TEXT", m.MercenaryLevel) : null);
         }
 
-        internal static string Checked { get { return LocalizationUtils.Get(LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED); } }
+        internal static string Checked { get { return Speech.S(K.OPTIONS_MENU_CHECKBOX_CHECKED); } }
 
         // ---- village ----------------------------------------------------------------------
 
@@ -557,50 +564,40 @@ namespace HSAEnhanced
 
     // The accessible screen of the Mercenaries scenes: a menu rebuilt from the game's data when
     // it changes (keeping the option under the cursor), read out when the step changes
-    class MercScreen : AccessibleScreen
+    class MercScreen : Core.Screen
     {
-        AccessibleMenu m_menu;
+        Menu m_menu;
         string m_key, m_signature;
+
+        internal override bool Alive { get { return Mercenaries.Active > 0; } }
 
         internal void Show(string key, string title, List<GameButton> items)
         {
             var sig = title + "\n" + string.Join("\n", items.ConvertAll(b => b.Label).ToArray());
             bool newStep = key != m_key;
             if (!newStep && sig == m_signature) return;
-            var keep = m_menu == null || newStep ? 0 : MenuEdit.GetIndex(m_menu);
-            var keepLabel = m_menu == null || newStep ? null : CurrentLabel();
-            m_menu = new AccessibleMenu(this, title, Mercenaries.GoBack);
-            foreach (var b in items) { var click = b.Click; m_menu.AddOption(b.Label, () => click()); }
-            int to = -1;
-            if (keepLabel != null) for (int i = 0; i < items.Count; i++) if (items[i].Label == keepLabel) { to = i; break; }
-            MenuEdit.SetIndex(m_menu, to >= 0 ? to : Math.Min(keep, Math.Max(0, items.Count - 1)));
+            var keep = m_menu == null || newStep ? 0 : m_menu.Index;
+            var keepKey = m_menu == null || newStep ? null : m_menu.KeyAt(m_menu.Index);
+            m_menu = new Menu(this, title, Mercenaries.GoBack);
+            foreach (var b in items) { var click = b.Click; m_menu.AddOption(b.Label, () => click(), b.Label); }
+            var to = m_menu.IndexOfKey(keepKey);
+            m_menu.Index = to >= 0 ? to : keep;
             m_signature = sig;
             if (newStep) Log.Info("mercenaries: " + key + " '" + title + "': " + GameButton.Describe(items));
             m_key = key;
-            if (!AccessibilityMgr.IsCurrentlyFocused(this)) { AccessibilityMgr.SetScreen(this); return; }   // it reads itself on focus
-            if (newStep) m_menu.StartReading();
-            // the same step with new contents (a mercenary added, an upgrade): the menu takes the keys
-            // at once without being read again (an HSA menu ignores them until it has been read)
-            else Ref.Set(m_menu, "m_isReading", true);
+            if (newStep && Focused) m_menu.StartReading();
         }
 
-        string CurrentLabel()
-        {
-            var list = MenuEdit.List(m_menu);
-            var i = MenuEdit.GetIndex(m_menu);
-            return list != null && i >= 0 && i < list.Count ? MenuEdit.TextOf(list[i]) : null;
-        }
-
-        public void HandleInput()
+        internal override bool HandleKey()
         {
             // the game's text box is open (a party's name): the keys are typing
             var input = UniversalInputManager.Get();
-            if (input != null && input.IsTextInputActive()) return;
-            if (m_menu != null) m_menu.HandleAccessibleInput();
+            if (input != null && input.IsTextInputActive()) return false;
+            return m_menu != null && m_menu.HandleKey();
         }
 
-        public string GetHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.Help(); }
 
-        public void OnGainedFocus() { if (m_menu != null) m_menu.StartReading(); }
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

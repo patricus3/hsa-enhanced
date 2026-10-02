@@ -63,30 +63,4 @@ namespace HSAEnhanced
         }
     }
 
-    static class Log
-    {
-        internal static void Warn(string text)
-        {
-            Accessibility.AccessibilityUtils.LogDebug("[HSAEnhanced] " + text);
-        }
-
-        // Always written to Accessibility.log (what the added menus contain, for bug reports)
-        internal static void Info(string text)
-        {
-            try { global::Log.Accessibility.Print("[HSAEnhanced] " + text); } catch { }
-        }
-
-        static readonly System.Collections.Generic.HashSet<string> s_said = new System.Collections.Generic.HashSet<string>();
-
-        // Info, each distinct message once (for things checked every second)
-        internal static void Once(string text)
-        {
-            if (s_said.Add(text)) Info(text);
-        }
-
-        internal static void Error(Exception e)
-        {
-            Accessibility.AccessibilityUtils.LogFatalError(e);
-        }
-    }
 }

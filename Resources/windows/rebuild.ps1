@@ -24,10 +24,13 @@ $Diff = [IO.Path]::ChangeExtension($Zip, '.diff.patch')
 function Hash($p) { (Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant() }
 function Read-Text($p) { if (Test-Path $p) { (Get-Content $p -Raw).Trim() } else { '' } }
 
+# --without-hsa (install.ps1 writes mode.txt): only our own core, no Hearthstone Access
+$Standalone = (Read-Text (Join-Path $Data 'mode.txt')) -eq 'without-hsa'
+
 # --- a new HSA release (the task looks once a day) -----------------------------------------
 $pending = Join-Path $Data 'downloads\rebuild_pending'
 $lastCheck = Join-Path $Data 'downloads\last_update_check'
-if ($Auto -and (-not (Test-Path $lastCheck) -or (Get-Item $lastCheck).LastWriteTime -lt (Get-Date).AddDays(-1))) {
+if ($Auto -and -not $Standalone -and (-not (Test-Path $lastCheck) -or (Get-Item $lastCheck).LastWriteTime -lt (Get-Date).AddDays(-1))) {
     Set-Content $lastCheck (Get-Date -Format o)
     try { Update-Hsa | Out-Null } catch { Log "HSA update check failed: $($_.Exception.Message)" }
 }
@@ -66,8 +69,10 @@ if ($Auto -and (Get-Process Hearthstone -ErrorAction SilentlyContinue)) {
     Log 'Hearthstone is running without the mod: asking whether to close it'
     Request-Prompt
 }
-if (-not (Test-Path $Zip) -or -not (Test-Path $Diff)) { throw "Missing $Zip or $Diff. Run the installer again." }
-Log "HSA zip: $Zip"
+if (-not $Standalone) {
+    if (-not (Test-Path $Zip) -or -not (Test-Path $Diff)) { throw "Missing $Zip or $Diff. Run the installer again." }
+    Log "HSA zip: $Zip"
+}
 
 # --- tools --------------------------------------------------------------------------------
 Use-Dotnet
@@ -87,6 +92,28 @@ function Invoke-Logged([string]$log, [scriptblock]$command) {
 function Port { & dotnet $PortDll @args; if ($LASTEXITCODE -ne 0) { throw "port $($args[0]) failed" } }
 function Unresolved { param([string[]]$a) $o = & dotnet $PortDll check @a; $o | Out-File -Encoding utf8 (Join-Path $Work 'check.log'); [int](($o | Select-Object -Last 1) -split ' ')[1] }
 
+if ($Standalone) {
+    Log '== without Hearthstone Access: our own core only'
+    if (Test-Path $Work) { Remove-Item -Recurse -Force $Work }
+    New-Item -ItemType Directory -Force (Join-Path $Work 'out') | Out-Null
+    $V = Join-Path $Work 'vanilla-Assembly-CSharp.dll'
+    Copy-Item $vanilla $V
+    $Out = Join-Path $Work 'out\Assembly-CSharp.dll'
+    Copy-Item $V $Out
+    $base = Unresolved @($V, $Managed)
+    $E = Join-Path $Work 'enh'
+    New-Item -ItemType Directory -Force (Join-Path $E 'check') | Out-Null
+    $code = Invoke-Logged (Join-Path $Work 'enhanced-build.log') { & dotnet build -c Release -v q (Join-Path $Src 'enhanced') "-p:GameManaged=$Managed" "-p:HsaAssembly=$V" -p:WithoutHsa=true -o (Join-Path $E 'bin') }
+    if ($code -ne 0) { throw "our core could not be built, see $Work\enhanced-build.log" }
+    $EDll = Join-Path $E 'bin\HSAEnhanced.dll'
+    Port hook $Out $EDll $Out $Managed --without-hsa
+    Copy-Item $Out, $EDll (Join-Path $E 'check') -Force
+    $enow = Unresolved @((Join-Path $E 'check\Assembly-CSharp.dll'), (Join-Path $E 'check'), $Managed, (Split-Path $Speech))
+    $eadd = Unresolved @((Join-Path $E 'check\HSAEnhanced.dll'), (Join-Path $E 'check'), $Managed)
+    Log "unresolved: vanilla $base, ours $enow, core $eadd"
+    if ($enow -gt $base -or $eadd -ne 0) { throw "the build has unresolved references, see $Work\check.log" }
+    $Enh = $EDll
+} else {
 Log '== unpack HSA'
 if (Test-Path $Work) { Remove-Item -Recurse -Force $Work }
 New-Item -ItemType Directory -Force (Join-Path $Work 'hsa'), (Join-Path $Work 'out') | Out-Null
@@ -140,6 +167,7 @@ try {
     if ($enow -le $base -and $eadd -eq 0) { $Enh = $EDll; Copy-Item $EAsm $Out -Force }
     else { Log "WARNING: enhancements have unresolved references, installing plain Hearthstone Access" }
 } catch { Log "WARNING: enhancements could not be built ($($_.Exception.Message), see $Work\enhanced-build.log), installing plain Hearthstone Access" }
+}
 
 # --- install ------------------------------------------------------------------------------
 # the task: a game started right after an update (Battle.net does) gets the mod the moment it closes
@@ -161,26 +189,42 @@ Copy-Item (Join-Path $PSScriptRoot 'prism\prism.dll') $Acc -Force
 $licenses = Join-Path $Acc 'prism'                          # Prism's MPL-2.0 and third-party notices
 New-Item -ItemType Directory -Force $licenses | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'prism\LICENSES'), (Join-Path $PSScriptRoot 'prism\NOTICE') $licenses -Recurse -Force
-Copy-Item $Compat, $Speech $Managed -Force
+Copy-Item $Speech $Managed -Force
 if ($Enh) { Copy-Item $Enh $Managed -Force } else { Remove-Item (Join-Path $Managed 'HSAEnhanced.dll') -ErrorAction SilentlyContinue }
 
-$hsa = Join-Path $Work 'hsa\patch'
 $gameAccessibility = Join-Path $Game 'Accessibility'
-New-Item -ItemType Directory -Force $gameAccessibility | Out-Null
-Copy-Item (Join-Path $hsa 'Accessibility\Sounds') $gameAccessibility -Recurse -Force
-Copy-Item (Join-Path $hsa 'Accessibility\hsa_manifest.json') $gameAccessibility -Force -ErrorAction SilentlyContinue
-foreach ($d in Get-ChildItem -Directory (Join-Path $hsa 'Strings')) {
-    $f = Join-Path $d.FullName 'ACCESSIBILITY.txt'
-    if (-not (Test-Path $f)) { continue }
-    $dest = Join-Path $Game "Strings\$($d.Name)"
-    New-Item -ItemType Directory -Force $dest | Out-Null
-    Copy-Item $f (Join-Path $dest 'ACCESSIBILITY.txt') -Force
+if ($Standalone) {
+    # nothing of Hearthstone Access's stays in the game folder
+    Remove-Item (Join-Path $Managed 'HSACompat.dll') -ErrorAction SilentlyContinue
+    Remove-Item $gameAccessibility -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem (Join-Path $Game 'Strings') -Directory -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item (Join-Path $_.FullName 'ACCESSIBILITY.txt') -ErrorAction SilentlyContinue }
+    # but its texts, which come with our mod (strings\<language>\ACCESSIBILITY.txt): our core reads them
+    foreach ($d in Get-ChildItem -Directory (Join-Path (Split-Path -Parent $PSScriptRoot) 'strings') -ErrorAction SilentlyContinue) {
+        $f = Join-Path $d.FullName 'ACCESSIBILITY.txt'
+        if (-not (Test-Path $f)) { continue }
+        $dest = Join-Path $Game "Strings\$($d.Name)"
+        New-Item -ItemType Directory -Force $dest | Out-Null
+        Copy-Item $f (Join-Path $dest 'ACCESSIBILITY.txt') -Force
+    }
+} else {
+    Copy-Item $Compat $Managed -Force
+    $hsa = Join-Path $Work 'hsa\patch'
+    New-Item -ItemType Directory -Force $gameAccessibility | Out-Null
+    Copy-Item (Join-Path $hsa 'Accessibility\Sounds') $gameAccessibility -Recurse -Force
+    Copy-Item (Join-Path $hsa 'Accessibility\hsa_manifest.json') $gameAccessibility -Force -ErrorAction SilentlyContinue
+    foreach ($d in Get-ChildItem -Directory (Join-Path $hsa 'Strings')) {
+        $f = Join-Path $d.FullName 'ACCESSIBILITY.txt'
+        if (-not (Test-Path $f)) { continue }
+        $dest = Join-Path $Game "Strings\$($d.Name)"
+        New-Item -ItemType Directory -Force $dest | Out-Null
+        Copy-Item $f (Join-Path $dest 'ACCESSIBILITY.txt') -Force
+    }
 }
 # the game file last: until here the game still starts as it was
 Copy-Item $Out $GameAsm -Force
 Hash $GameAsm | Set-Content $InstalledHash
 Hash $vanilla | Set-Content (Join-Path $Data 'built_for.sha256')
-Split-Path -Leaf $Zip | Set-Content (Join-Path $Data 'built_from.txt')
+$(if ($Standalone) { 'without Hearthstone Access' } else { Split-Path -Leaf $Zip }) | Set-Content (Join-Path $Data 'built_from.txt')
 Remove-Item $pending -Force -ErrorAction SilentlyContinue
 Clear-Prompt
-Log "done: built for $(Read-Text (Join-Path $Data 'built_for.sha256')), enhancements $(if ($Enh) { 'on' } else { 'off' })"
+Log "done: built for $(Read-Text (Join-Path $Data 'built_for.sha256')), $(if ($Standalone) { 'without Hearthstone Access' } elseif ($Enh) { 'enhancements on' } else { 'enhancements off' })"

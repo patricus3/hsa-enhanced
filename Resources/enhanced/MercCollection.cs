@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Accessibility;
+using HSAEnhanced.Core;
 using Hearthstone;
 using UnityEngine;
 
@@ -283,7 +283,7 @@ namespace HSAEnhanced
                         m_text = "",
                         m_completedCallback = typed =>
                         {
-                            AccessibilityMgr.DisallowTextInput();
+                            TextInput.HsaKeys(true);
                             var name = typed == null ? "" : typed.Trim();
                             var editing = CollectionManager.Get().GetEditingTeam();
                             if (editing == null || name.Length == 0) { Say(Str.Clean(team.Name)); return; }
@@ -291,12 +291,12 @@ namespace HSAEnhanced
                             Log.Info("mercenaries: party renamed " + name);
                             Say(Str.Join(Str.Word("GLUE_COLLECTION_DECK_RENAME"), name));
                         },
-                        m_canceledCallback = (user, requester) => { AccessibilityMgr.DisallowTextInput(); Say(Str.Clean(team.Name)); },
+                        m_canceledCallback = (user, requester) => { TextInput.HsaKeys(true); Say(Str.Clean(team.Name)); },
                     };
                     input.UseTextInput(parms, true);
                     if (!input.IsTextInputActive()) { Log.Info("mercenaries: the name box did not open"); Say(Str.Unavailable); return; }
-                    AccessibilityMgr.AllowTextInput();
-                    Say(Str.Join(Str.Clean(team.Name), LocalizationUtils.Get(LocalizationKey.SCREEN_COLLECTION_MANAGER_EDIT_DECK_RENAME_DECK_PROMPT)));
+                    TextInput.HsaKeys(false);
+                    Say(Str.Join(Str.Clean(team.Name), Speech.S(K.SCREEN_COLLECTION_MANAGER_EDIT_DECK_RENAME_DECK_PROMPT)));
                 });
             Mercenaries.Item(items, tray, Str.Word("GLOBAL_DONE"), () => Done(tray));
             if (teams != null)

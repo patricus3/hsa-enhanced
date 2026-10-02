@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Accessibility;
+using HSAEnhanced.Core;
 using UnityEngine;
 
 namespace HSAEnhanced
@@ -31,18 +31,31 @@ namespace HSAEnhanced
                 var gs = GameState.Get();
                 if (gs == null || !gs.IsGameCreated()) return false;
                 var mgr = GameMgr.Get();
-                if (mgr != null && (mgr.IsBattlegrounds() || mgr.IsMercenaries())) return false;
+                if (mgr != null && mgr.IsBattlegrounds()) return false;
+#if !WITHOUT_HSA
+                // with Hearthstone Access its own reading of Mercenaries battles stays
+                if (mgr != null && mgr.IsMercenaries()) return false;
+#endif
                 return true;
             }
         }
 
+        // the card the player is on (null: none)
+        internal static Card FocusedCard { get { return s_card; } }
+
+        // spoken as the match screen (ours, or Hearthstone Access's gameplay screen)
         static void Say(object gameplay, string text)
         {
-            if (!string.IsNullOrEmpty(text)) AccessibilityMgr.Output(gameplay as AccessibleComponent, text);
+            if (string.IsNullOrEmpty(text)) return;
+            var screen = gameplay as Core.Screen;
+            if (screen != null) { screen.Say(text); return; }
+#if !WITHOUT_HSA
+            Accessibility.AccessibilityMgr.Output(gameplay as Accessibility.AccessibleComponent, text);
+#endif
         }
 
-        static string L(LocalizationKey key) { return LocalizationUtils.Get(key); }
-        static string F(LocalizationKey key, params object[] args) { return LocalizationUtils.Format(key, args); }
+        static string L(string key) { return Speech.S(key); }
+        static string F(string key, params object[] args) { return Speech.S(key, args); }
 
         static Player Side(bool friendly)
         {
@@ -106,11 +119,11 @@ namespace HSAEnhanced
         {
             switch (kind)
             {
-                case Kind.HeroPower: return L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_HERO_POWER : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_HERO_POWER);
-                case Kind.Weapon: return L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_WEAPON : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_WEAPON);
-                case Kind.Hand: return L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_HAND : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_HAND);
-                case Kind.Minions: return L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_MINIONS : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_MINIONS);
-                case Kind.Secrets: return L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_SECRETS : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_SECRETS);
+                case Kind.HeroPower: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_HERO_POWER : K.GAMEPLAY_ZONE_OPPONENT_HERO_POWER);
+                case Kind.Weapon: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_WEAPON : K.GAMEPLAY_ZONE_OPPONENT_WEAPON);
+                case Kind.Hand: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_HAND : K.GAMEPLAY_ZONE_OPPONENT_HAND);
+                case Kind.Minions: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_MINIONS : K.GAMEPLAY_ZONE_OPPONENT_MINIONS);
+                case Kind.Secrets: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_SECRETS : K.GAMEPLAY_ZONE_OPPONENT_SECRETS);
                 default: return null;      // a hero's first line names it
             }
         }
@@ -137,7 +150,7 @@ namespace HSAEnhanced
             if (IsList(kind, friendly))
             {
                 var cards = Cards(kind, friendly);
-                first = F(LocalizationKey.MENU_OPTION_FORMAT, first, cards.IndexOf(card) + 1, cards.Count);
+                first = Speech.S(K.MENU_OPTION_FORMAT, first, cards.IndexOf(card) + 1, cards.Count);
             }
             Say(gameplay, first);
             SyncHsa(gameplay, card);
@@ -146,18 +159,21 @@ namespace HSAEnhanced
         // HSA's focused card follows ours: its Enter, targeting and pointer act on this card
         static void SyncHsa(object gameplay, Card card)
         {
+#if !WITHOUT_HSA
+            if (gameplay is Core.Screen) return;
             try
             {
-                Ref.Set(gameplay, "m_cardBeingRead", AccessibleCard.CreateCard(gameplay as AccessibleComponent, card));
+                Ref.Set(gameplay, "m_cardBeingRead", Accessibility.AccessibleCard.CreateCard(gameplay as Accessibility.AccessibleComponent, card));
                 Ref.Set(gameplay, "m_curZone", Ref.Invoke(card, "GetAccessibleZone"));
             }
             catch (Exception e) { Log.Error(e); }
+#endif
         }
 
         static void Clear(object gameplay)
         {
             s_card = null; s_hasZone = false; s_lines.Clear();
-            Ref.Invoke(gameplay, "StopReadingCard", true);
+            if (!(gameplay is Core.Screen)) Ref.Invoke(gameplay, "StopReadingCard", true);
         }
 
         // the focused card left its zone (played, died, bounced, stolen): the focus goes, silently
@@ -168,7 +184,7 @@ namespace HSAEnhanced
             if (!KindOf(s_card, out kind, out friendly) || kind != s_kind || friendly != s_friendly) { s_card = null; s_hasZone = false; s_lines.Clear(); }
         }
 
-        static void FocusZone(object gameplay, Kind kind, bool friendly, LocalizationKey empty, bool force)
+        static void FocusZone(object gameplay, Kind kind, bool friendly, string empty, bool force)
         {
             var cards = Cards(kind, friendly);
             if (cards.Count == 0) { Say(gameplay, L(empty)); return; }
@@ -183,17 +199,17 @@ namespace HSAEnhanced
         {
             if (!Enabled) return false;
             CheckFocus(gameplay);
-            if (!minionsAndHeroesOnly && AccessibleKey.SEE_PLAYER_HAND.IsPressed()) FocusZone(gameplay, Kind.Hand, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_HAND_EMPTY, true);
-            else if (!minionsAndHeroesOnly && AccessibleKey.SEE_PLAYER_SECRETS.IsPressed()) FocusZone(gameplay, Kind.Secrets, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_SECRETS_EMPTY, true);
-            else if (!minionsAndHeroesOnly && AccessibleKey.SEE_OPPONENT_SECRETS.IsPressed()) FocusZone(gameplay, Kind.Secrets, false, LocalizationKey.GAMEPLAY_SEE_ZONE_OPPONENT_SECRETS_EMPTY, true);
-            else if (AccessibleKey.SEE_PLAYER_MINIONS.IsPressed()) FocusZone(gameplay, Kind.Minions, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_MINIONS_EMPTY, true);
-            else if (AccessibleKey.SEE_OPPONENT_MINIONS.IsPressed()) FocusZone(gameplay, Kind.Minions, false, LocalizationKey.GAMEPLAY_SEE_ZONE_OPPONENT_MINIONS_EMPTY, true);
-            else if (AccessibleKey.SEE_OPPONENT_HERO.IsPressed()) FocusZone(gameplay, Kind.Hero, false, LocalizationKey.GAMEPLAY_SEE_ZONE_OPPONENT_MINIONS_EMPTY, false);
-            else if (AccessibleKey.SEE_PLAYER_HERO.IsPressed()) FocusZone(gameplay, Kind.Hero, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_MINIONS_EMPTY, false);
-            else if (AccessibleKey.SEE_PLAYER_HERO_POWER.IsPressed()) FocusZone(gameplay, Kind.HeroPower, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_HERO_POWER_EMPTY, true);
-            else if (AccessibleKey.SEE_OPPONENT_HERO_POWER.IsPressed()) FocusZone(gameplay, Kind.HeroPower, false, LocalizationKey.GAMEPLAY_SEE_ZONE_OPPONENT_HERO_POWER_EMPTY, true);
-            else if (AccessibleKey.SEE_PLAYER_WEAPON.IsPressed()) FocusZone(gameplay, Kind.Weapon, true, LocalizationKey.GAMEPLAY_SEE_ZONE_PLAYER_WEAPON_EMPTY, false);
-            else if (AccessibleKey.SEE_OPPONENT_WEAPON.IsPressed()) FocusZone(gameplay, Kind.Weapon, false, LocalizationKey.GAMEPLAY_SEE_ZONE_OPPONENT_WEAPON_EMPTY, false);
+            if (!minionsAndHeroesOnly && Bind.SEE_PLAYER_HAND.Pressed) FocusZone(gameplay, Kind.Hand, true, K.GAMEPLAY_SEE_ZONE_PLAYER_HAND_EMPTY, true);
+            else if (!minionsAndHeroesOnly && Bind.SEE_PLAYER_SECRETS.Pressed) FocusZone(gameplay, Kind.Secrets, true, K.GAMEPLAY_SEE_ZONE_PLAYER_SECRETS_EMPTY, true);
+            else if (!minionsAndHeroesOnly && Bind.SEE_OPPONENT_SECRETS.Pressed) FocusZone(gameplay, Kind.Secrets, false, K.GAMEPLAY_SEE_ZONE_OPPONENT_SECRETS_EMPTY, true);
+            else if (Bind.SEE_PLAYER_MINIONS.Pressed) FocusZone(gameplay, Kind.Minions, true, K.GAMEPLAY_SEE_ZONE_PLAYER_MINIONS_EMPTY, true);
+            else if (Bind.SEE_OPPONENT_MINIONS.Pressed) FocusZone(gameplay, Kind.Minions, false, K.GAMEPLAY_SEE_ZONE_OPPONENT_MINIONS_EMPTY, true);
+            else if (Bind.SEE_OPPONENT_HERO.Pressed) FocusZone(gameplay, Kind.Hero, false, K.GAMEPLAY_SEE_ZONE_OPPONENT_MINIONS_EMPTY, false);
+            else if (Bind.SEE_PLAYER_HERO.Pressed) FocusZone(gameplay, Kind.Hero, true, K.GAMEPLAY_SEE_ZONE_PLAYER_MINIONS_EMPTY, false);
+            else if (Bind.SEE_PLAYER_HERO_POWER.Pressed) FocusZone(gameplay, Kind.HeroPower, true, K.GAMEPLAY_SEE_ZONE_PLAYER_HERO_POWER_EMPTY, true);
+            else if (Bind.SEE_OPPONENT_HERO_POWER.Pressed) FocusZone(gameplay, Kind.HeroPower, false, K.GAMEPLAY_SEE_ZONE_OPPONENT_HERO_POWER_EMPTY, true);
+            else if (Bind.SEE_PLAYER_WEAPON.Pressed) FocusZone(gameplay, Kind.Weapon, true, K.GAMEPLAY_SEE_ZONE_PLAYER_WEAPON_EMPTY, false);
+            else if (Bind.SEE_OPPONENT_WEAPON.Pressed) FocusZone(gameplay, Kind.Weapon, false, K.GAMEPLAY_SEE_ZONE_OPPONENT_WEAPON_EMPTY, false);
             return true;
         }
 
@@ -207,13 +223,13 @@ namespace HSAEnhanced
             if (cards.Count == 0) return true;
             int at = s_card == null ? -1 : cards.IndexOf(s_card);
             int to = -1;
-            if (AccessibleKey.READ_NEXT_ITEM.IsPressed()) to = at + 1;
-            else if (AccessibleKey.READ_PREV_ITEM.IsPressed()) to = at < 0 ? -1 : at - 1;
-            else if (AccessibleKey.READ_FIRST_ITEM.IsPressed()) to = 0;
-            else if (AccessibleKey.READ_LAST_ITEM.IsPressed()) to = cards.Count - 1;
+            if (Bind.READ_NEXT_ITEM.Pressed) to = at + 1;
+            else if (Bind.READ_PREV_ITEM.Pressed) to = at < 0 ? -1 : at - 1;
+            else if (Bind.READ_FIRST_ITEM.Pressed) to = 0;
+            else if (Bind.READ_LAST_ITEM.Pressed) to = cards.Count - 1;
             else
             {
-                var n = AccessibleInputMgr.TryGetPressedNumKey();
+                var n = Keys.Number();
                 if (n.HasValue) to = (n.Value == 0 ? 10 : n.Value) - 1;
             }
             if (to >= 0 && to < cards.Count && to != at) Focus(gameplay, cards[to], false);
@@ -225,7 +241,7 @@ namespace HSAEnhanced
         internal static bool ValidItems(object gameplay)
         {
             if (!Enabled) return false;
-            bool next = AccessibleKey.READ_NEXT_VALID_ITEM.IsPressed(), prev = !next && AccessibleKey.READ_PREV_VALID_ITEM.IsPressed();
+            bool next = Bind.READ_NEXT_VALID_ITEM.Pressed, prev = !next && Bind.READ_PREV_VALID_ITEM.Pressed;
             if (!next && !prev) return true;
             CheckFocus(gameplay);
             var candidates = new List<Card>();
@@ -238,7 +254,7 @@ namespace HSAEnhanced
             };
             side(true); side(false);
             var valid = candidates.FindAll(c => IsValid(gs, c.GetEntity()));
-            if (valid.Count == 0) { Say(gameplay, L(LocalizationKey.GAMEPLAY_NO_VALID_PLAYS)); return true; }
+            if (valid.Count == 0) { Say(gameplay, Speech.S(K.GAMEPLAY_NO_VALID_PLAYS)); return true; }
             if (valid.Count == 1) { Focus(gameplay, valid[0], true); return true; }
             int at = s_card == null ? -1 : candidates.IndexOf(s_card);
             if (at < 0) { Focus(gameplay, next ? valid[0] : valid[valid.Count - 1], false); return true; }
@@ -271,7 +287,7 @@ namespace HSAEnhanced
             if (!Enabled) return false;
             CheckFocus(gameplay);
             if (s_card == null) return true;
-            if (AccessibleKey.READ_ORIGINAL_CARD_STATS.IsPressed())
+            if (Bind.READ_ORIGINAL_CARD_STATS.Pressed)
             {
                 foreach (var l in CombatCards.OriginalStats(s_card)) Say(gameplay, l);
                 return true;
@@ -280,10 +296,10 @@ namespace HSAEnhanced
             if (!Hidden(s_card)) s_lines = CombatCards.Lines(s_card);
             if (s_lines.Count == 0) return true;
             s_line = Math.Min(s_line, s_lines.Count - 1);
-            if (AccessibleKey.READ_TO_END.IsPressed()) { for (int i = s_line; i < s_lines.Count; i++) Say(gameplay, s_lines[i]); s_line = s_lines.Count - 1; }
-            else if (AccessibleKey.READ_CUR_LINE.IsPressed()) Say(gameplay, s_lines[s_line]);
-            else if (AccessibleKey.READ_NEXT_LINE.IsPressed()) { if (s_line + 1 < s_lines.Count) Say(gameplay, s_lines[++s_line]); }
-            else if (AccessibleKey.READ_PREV_LINE.IsPressed()) { if (s_line > 0) Say(gameplay, s_lines[--s_line]); }
+            if (Bind.READ_TO_END.Pressed) { for (int i = s_line; i < s_lines.Count; i++) Say(gameplay, s_lines[i]); s_line = s_lines.Count - 1; }
+            else if (Bind.READ_CUR_LINE.Pressed) Say(gameplay, s_lines[s_line]);
+            else if (Bind.READ_NEXT_LINE.Pressed) { if (s_line + 1 < s_lines.Count) Say(gameplay, s_lines[++s_line]); }
+            else if (Bind.READ_PREV_LINE.Pressed) { if (s_line > 0) Say(gameplay, s_lines[--s_line]); }
             return true;
         }
 
@@ -293,17 +309,17 @@ namespace HSAEnhanced
         {
             if (!Enabled) return false;
             var gs = GameState.Get();
-            if (AccessibleKey.SEE_OPPONENT_MANA.IsPressed()) Mana(gameplay, false);
-            else if (AccessibleKey.SEE_PLAYER_MANA.IsPressed()) Mana(gameplay, true);
-            else if (AccessibleKey.SEE_OPPONENT_DECK.IsPressed()) Say(gameplay, F(LocalizationKey.GAMEPLAY_READ_OPPONENT_DECK, Side(false).GetDeckZone().GetCardCount()));
-            else if (AccessibleKey.SEE_PLAYER_DECK.IsPressed()) Say(gameplay, F(LocalizationKey.GAMEPLAY_READ_PLAYER_DECK, Side(true).GetDeckZone().GetCardCount()));
-            else if (AccessibleKey.SEE_OPPONENT_HAND.IsPressed())
+            if (Bind.SEE_OPPONENT_MANA.Pressed) Mana(gameplay, false);
+            else if (Bind.SEE_PLAYER_MANA.Pressed) Mana(gameplay, true);
+            else if (Bind.SEE_OPPONENT_DECK.Pressed) Say(gameplay, Speech.S(K.GAMEPLAY_READ_OPPONENT_DECK, Side(false).GetDeckZone().GetCardCount()));
+            else if (Bind.SEE_PLAYER_DECK.Pressed) Say(gameplay, Speech.S(K.GAMEPLAY_READ_PLAYER_DECK, Side(true).GetDeckZone().GetCardCount()));
+            else if (Bind.SEE_OPPONENT_HAND.Pressed)
             {
                 var hand = Cards(Kind.Hand, false);
-                Say(gameplay, F(LocalizationKey.GAMEPLAY_READ_OPPONENT_HAND, hand.Count));
+                Say(gameplay, Speech.S(K.GAMEPLAY_READ_OPPONENT_HAND, hand.Count));
                 if (hand.Count > 0) { s_hasZone = false; Focus(gameplay, hand[0], false); }
             }
-            else if (AccessibleKey.READ_ANOMALIES.IsPressed()) Anomalies(gameplay);
+            else if (Bind.READ_ANOMALIES.Pressed) Anomalies(gameplay);
             else return false;     // other status keys stay HSA's
             return true;
         }
@@ -314,7 +330,7 @@ namespace HSAEnhanced
         // on the card before); Backspace stays HSA's cancel
         internal static bool ConfirmTarget(object gameplay, bool targetRequired)
         {
-            if (!Enabled || !targetRequired || !AccessibleKey.CONFIRM.IsPressed()) return false;
+            if (!Enabled || !targetRequired || !Bind.CONFIRM.Pressed) return false;
             CheckFocus(gameplay);
             if (s_card == null) return true;
             var e = s_card.GetEntity();
@@ -335,7 +351,7 @@ namespace HSAEnhanced
         {
             var gs = GameState.Get();
             if (gs != null && e != null && gs.IsEntityInputEnabled(e) && InputManager.Get().PermitDecisionMakingInput()) { act(); return; }
-            FallbackWatcher.Run(WaitThen(speaker, e, act, ++s_waiting));
+            Jobs.Run(WaitThen(speaker, e, act, ++s_waiting));
         }
 
         static int s_waiting;
@@ -351,28 +367,35 @@ namespace HSAEnhanced
                 if (gs == null || e == null) yield break;
                 if (gs.IsEntityInputEnabled(e) && InputManager.Get().PermitDecisionMakingInput()) { act(); yield break; }
             }
-            if (id == s_waiting) { Log.Info("combat: the game did not take input in time"); Say(speaker, LocalizationUtils.Get(LocalizationKey.GAMEPLAY_TRY_AGAIN)); }
+            if (id == s_waiting) { Log.Info("combat: the game did not take input in time"); Say(speaker, Speech.S(K.GAMEPLAY_TRY_AGAIN)); }
         }
 
         static void Mana(object gameplay, bool friendly)
         {
             var p = Side(friendly);
             int available = p.GetNumAvailableResources(), total = p.GetTag(GAME_TAG.RESOURCES);
-            if (friendly) Say(gameplay, available != total ? F(LocalizationKey.GAMEPLAY_READ_PLAYER_MANA_CURRENT_AND_TOTAL, available, total) : F(LocalizationKey.GAMEPLAY_READ_PLAYER_MANA, available));
-            else Say(gameplay, available != total ? F(LocalizationKey.GAMEPLAY_READ_OPPONENT_MANA_CURRENT_AND_TOTAL, available, total) : F(LocalizationKey.GAMEPLAY_READ_OPPONENT_MANA, available));
+            if (friendly) Say(gameplay, available != total ? Speech.S(K.GAMEPLAY_READ_PLAYER_MANA_CURRENT_AND_TOTAL, available, total) : Speech.S(K.GAMEPLAY_READ_PLAYER_MANA, available));
+            else Say(gameplay, available != total ? Speech.S(K.GAMEPLAY_READ_OPPONENT_MANA_CURRENT_AND_TOTAL, available, total) : Speech.S(K.GAMEPLAY_READ_OPPONENT_MANA, available));
             int owed = p.GetTag(GAME_TAG.OVERLOAD_OWED);
-            if (owed > 0) Say(gameplay, F(friendly ? LocalizationKey.GAMEPLAY_READ_PLAYER_OVERLOADED_MANA : LocalizationKey.GAMEPLAY_READ_OPPONENT_OVERLOADED_MANA, owed));
+            if (owed > 0) Say(gameplay, F(friendly ? K.GAMEPLAY_READ_PLAYER_OVERLOADED_MANA : K.GAMEPLAY_READ_OPPONENT_OVERLOADED_MANA, owed));
             int locked = p.GetTag(GAME_TAG.OVERLOAD_LOCKED);
-            if (friendly && locked > 0) Say(gameplay, F(LocalizationKey.GAMEPLAY_READ_PLAYER_LOCKED_MANA, locked));
+            if (friendly && locked > 0) Say(gameplay, Speech.S(K.GAMEPLAY_READ_PLAYER_LOCKED_MANA, locked));
             try
             {
-                if (CorpseCounter.ShouldShowCorpseCounter(p))
+                if (ShowsCorpses(p))
                 {
                     int corpses = p.GetNumAvailableCorpses();
-                    Say(gameplay, corpses > 0 ? F(LocalizationKey.GAMEPLAY_READ_CORPSES, corpses) : L(LocalizationKey.GAMEPLAY_READ_CORPSES_EMPTY));
+                    Say(gameplay, corpses > 0 ? Speech.S(K.GAMEPLAY_READ_CORPSES, corpses) : Speech.S(K.GAMEPLAY_READ_CORPSES_EMPTY));
                 }
             }
             catch { }
+        }
+
+        // the corpse counter: Death Knights, or anyone with corpses
+        static bool ShowsCorpses(Player p)
+        {
+            var hero = p.GetHero();
+            return p.GetNumAvailableCorpses() > 0 || (hero != null && hero.GetClass() == TAG_CLASS.DEATHKNIGHT);
         }
 
         static void Anomalies(object gameplay)
@@ -389,12 +412,12 @@ namespace HSAEnhanced
                         if (!(id is int)) continue;
                         var e = GameState.Get().GetEntity((int)id);
                         if (e == null) continue;
-                        Say(gameplay, F(LocalizationKey.BATTLEGROUNDS_GAMEPLAY_READ_ANOMALY, Str.Clean(e.GetName()), Str.Clean(e.GetCardTextInHand())));
+                        Say(gameplay, Speech.S(K.BATTLEGROUNDS_GAMEPLAY_READ_ANOMALY, Str.Clean(e.GetName()), Str.Clean(e.GetCardTextInHand())));
                         said = true;
                     }
             }
             catch (Exception ex) { Log.Error(ex); }
-            if (!said) Say(gameplay, L(LocalizationKey.GAMEPLAY_NO_ANOMELIES));
+            if (!said) Say(gameplay, Speech.S(K.GAMEPLAY_NO_ANOMELIES));
         }
     }
 }

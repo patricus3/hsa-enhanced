@@ -3,6 +3,7 @@ rem Hearthstone Access for Windows installer (unofficial). Builds the mod on thi
 rem installed game and the official HSA release; speech goes through Prism to your screen reader.
 rem The work is done by Resources\windows\install.ps1; this file only asks for administrator rights.
 rem   --use-hsa-menus   use Hearthstone Access's own menus instead of the enhanced menu system
+rem   --without-hsa     only our own core, without Hearthstone Access (friends list, popups; most screens are not ours yet)
 setlocal
 net session >nul 2>&1
 if errorlevel 1 (

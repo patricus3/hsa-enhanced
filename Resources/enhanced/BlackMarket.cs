@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Accessibility;
 using Blizzard.T5.Services;
 using Hearthstone.BlackMarket;
 using Hearthstone.DataModels;
@@ -35,7 +34,7 @@ namespace HSAEnhanced
                     var page = Ref.Get<BlackMarketMainPage>(Display, "m_mainPage");
                     if (page == null || !Ref.Get<bool>(Display, "m_mainPageInitialized")) return;
                     m_screen = new AccessibleBlackMarket(page);
-                    AccessibilityMgr.SetScreen(m_screen);
+                    Core.Focus.SetScreen(m_screen);
                 }
                 m_screen.Poll();
             }
@@ -49,10 +48,10 @@ namespace HSAEnhanced
         }
     }
 
-    class AccessibleBlackMarket : AccessibleScreen
+    class AccessibleBlackMarket : Core.Screen
     {
         readonly BlackMarketMainPage m_page;
-        AccessibleMenu m_menu;
+        Core.Menu m_menu;
         string m_signature;
         int m_itemCount;
         AccessibleBlackMarketItem m_item;          // popup UI while open
@@ -84,10 +83,10 @@ namespace HSAEnhanced
         #region Menu
         void Rebuild()
         {
-            var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
+            var keep = m_menu == null ? 0 : m_menu.Index;
             var model = Model;
             var title = model != null && !string.IsNullOrEmpty(model.Name) ? Str.Clean(model.Name) : Title();
-            m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, title, GoBack));
+            m_menu = new Core.Menu(this, title, GoBack);
             m_itemCount = 0;
 
             if (model != null && model.Items != null)
@@ -127,7 +126,7 @@ namespace HSAEnhanced
         void AddInfo(Func<string> value, string titleKey)
         {
             if (string.IsNullOrEmpty(Str.Clean(value()))) return;
-            AccessibleMenu.GetTextDelegate text = () =>
+            Func<string> text = () =>
             {
                 var v = Str.Clean(value());
                 if (titleKey == null) return v;
@@ -236,7 +235,7 @@ namespace HSAEnhanced
             var item = m_item;
             m_item = null;
             item.Detach();
-            AccessibilityMgr.HideUI(item);
+            Core.Focus.Pop(item);
         }
         #endregion
 
@@ -250,7 +249,7 @@ namespace HSAEnhanced
                 {
                     m_expectPopupUntil = 0;
                     m_item = new AccessibleBlackMarketItem(this, popup);
-                    AccessibilityMgr.ShowUI(m_item);
+                    Core.Focus.Push(m_item);
                     m_item.Start();
                 }
             }
@@ -263,7 +262,7 @@ namespace HSAEnhanced
             if (sig == m_signature) return;
             var hadItems = m_itemCount > 0;
             Rebuild();
-            if (!hadItems && m_itemCount > 0 && AccessibilityMgr.IsCurrentlyFocused(this)) m_menu.StartReading(false);
+            if (!hadItems && m_itemCount > 0 && Focused) m_menu.StartReading(false);
         }
 
         void GoBack()
@@ -276,16 +275,16 @@ namespace HSAEnhanced
             CloseItem();
             var widget = Ref.Get<Widget>(m_page, "m_widget");
             if (widget != null && m_pageListener != null) widget.RemoveEventListener(m_pageListener);
-            if (AccessibilityMgr.IsCurrentlyFocused(this)) AccessibilityMgr.TransitioningScreens();
+            Core.Focus.Pop(this);
         }
 
-        void Output(string text) { AccessibilityMgr.Output(this, text); }
+        void Output(string text) { Say(text); }
 
-        public void HandleInput() { if (m_menu != null) m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
 
-        public string GetHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.GetHelp(); }
 
-        public void OnGainedFocus()
+        internal override void Read()
         {
             Rebuild();
             m_menu.StartReading();
@@ -293,13 +292,13 @@ namespace HSAEnhanced
     }
 
     // The popup of one Black Market item: details, quantity, buy, haggle
-    class AccessibleBlackMarketItem : AccessibleUI
+    class AccessibleBlackMarketItem : Core.Screen
     {
         readonly AccessibleBlackMarket m_market;
         readonly BlackMarketItemPopup m_popup;
         readonly Widget m_widget;
         readonly Widget.EventListenerDelegate m_listener;
-        AccessibleMenu m_menu;
+        Core.Menu m_menu;
         bool m_dismissed;
 
         internal AccessibleBlackMarketItem(AccessibleBlackMarket market, BlackMarketItemPopup popup)
@@ -332,12 +331,12 @@ namespace HSAEnhanced
         void Build()
         {
             var item = Item;
-            m_menu = new AccessibleMenu(this, item == null ? "" : Str.Clean(item.DisplayName), Close);
+            m_menu = new Core.Menu(this, item == null ? "" : Str.Clean(item.DisplayName), Close);
             if (item == null) return;
 
             var description = Str.Join(Str.Clean(item.Description), item.RewardList == null ? null : Str.Clean(item.RewardList.Description));
             if (description.Length > 0) m_menu.AddOption(description, () => Output(description));
-            AccessibleMenu.GetTextDelegate price = () =>
+            Func<string> price = () =>
             {
                 var i = Item;
                 return i == null || i.TotalPrice == null ? "" : Str.Join(Str.Word("GLUE_STORE_SUMMARY_PRICE_HEADLINE"), AccessibleBlackMarket.Price(i.TotalPrice.Amount));
@@ -349,7 +348,7 @@ namespace HSAEnhanced
             // quantity, when more than one can be bought
             if (item.ItemStock != 1)
             {
-                AccessibleMenu.GetTextDelegate qty = () => Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
+                Func<string> qty = () => Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
                 m_menu.AddOption(qty, () => Output(qty()));
                 // "+1" is the game's text for such a button; a bare "-" is silent in screen readers
                 var plus = Str.Word("GLUE_BATTLEBASH_PURCHASE_PLUS1");
@@ -372,12 +371,11 @@ namespace HSAEnhanced
 
             m_menu.AddOption(Str.Back, Close);
             var labels = new List<string>();
-            var list = MenuEdit.List(m_menu);
-            if (list != null) foreach (var o in list) labels.Add(MenuEdit.TextOf(o));
+            for (int i = 0; i < m_menu.Count; i++) labels.Add(m_menu.TextAt(i));
             Log.Info("Black Market item: " + string.Join(" | ", labels.ToArray()) + (mgr == null ? "" : " (grace period " + grace + ", haggle " + item.HaggleStatus + ")"));
         }
 
-        void Adjust(string ev, AccessibleMenu.GetTextDelegate qty, AccessibleMenu.GetTextDelegate price)
+        void Adjust(string ev, Func<string> qty, Func<string> price)
         {
             Send(ev);
             Output(Str.Join(qty(), price()));
@@ -397,10 +395,12 @@ namespace HSAEnhanced
             m_market.CloseItem();
         }
 
-        void Output(string text) { AccessibilityMgr.Output(this, text); }
+        void Output(string text) { Say(text); }
 
-        public void HandleAccessibleInput() { if (m_menu != null) m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.GetHelp(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

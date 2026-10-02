@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Accessibility;
 using Hearthstone.UI;
 using UnityEngine;
 
@@ -20,7 +19,7 @@ namespace HSAEnhanced
         // from FallbackWatcher, twice a second
         internal static void Tick()
         {
-            if (!AccessibilityMgr.IsAccessibilityEnabled() || GameState.Get() != null) { Hide(); return; }
+            if (!true || GameState.Get() != null) { Hide(); return; }
             string key, title; List<GameButton> items;
             Current(out key, out title, out items);
             if (key == null) { Hide(); return; }
@@ -28,7 +27,7 @@ namespace HSAEnhanced
             Hide();
             Log.Info("set rotation: " + key + ": " + title + " | " + GameButton.Describe(items));
             s_ui = new SetRotationUI(key, title, items);
-            AccessibilityMgr.ShowUI(s_ui);
+            Core.Focus.Push(s_ui);
             s_ui.Start();
         }
 
@@ -54,7 +53,7 @@ namespace HSAEnhanced
             if (s_ui == null) return;
             var ui = s_ui;
             s_ui = null;
-            AccessibilityMgr.HideUI(ui);
+            Core.Focus.Pop(ui);
         }
 
         static void Current(out string key, out string title, out List<GameButton> items)
@@ -116,15 +115,15 @@ namespace HSAEnhanced
 
         static void AddText(List<GameButton> items, Component target, string text)
         {
-            items.Add(new GameButton { Target = target, Label = text, Click = () => { if (s_ui != null) AccessibilityMgr.Output(s_ui, text); } });
+            items.Add(new GameButton { Target = target, Label = text, Click = () => { if (s_ui != null) s_ui.Say(text); } });
         }
     }
 
     // One intro step: its title (the headline) is said first, then its texts and its button
-    class SetRotationUI : AccessibleUI
+    class SetRotationUI : Core.Screen
     {
         internal readonly string Key;
-        readonly AccessibleMenu m_menu;
+        readonly Core.Menu m_menu;
         string m_signature;
 
         internal SetRotationUI(string key, string title, List<GameButton> items)
@@ -133,7 +132,7 @@ namespace HSAEnhanced
             // said on opening: the headline and every text of the step (the options repeat them one by one)
             var said = new List<string> { title };
             foreach (var b in items) if (b.Label != title && !(b.Target is PegUIElement) && !(b.Target is Clickable)) said.Add(b.Label);
-            m_menu = new AccessibleMenu(this, Str.Join(said.ToArray()), null);
+            m_menu = new Core.Menu(this, Str.Join(said.ToArray()), null);
             Fill(items);
         }
 
@@ -149,7 +148,7 @@ namespace HSAEnhanced
             }
             m_signature = sig.ToString();
             // the button (last) is where the cursor starts: Enter does what the step waits for
-            MenuEdit.SetIndex(m_menu, m_menu.GetNumItems() - 1);
+            m_menu.Index = m_menu.Count - 1;
         }
 
         internal void Update(List<GameButton> items)
@@ -157,16 +156,16 @@ namespace HSAEnhanced
             var sig = new System.Text.StringBuilder();
             foreach (var b in items) sig.Append(b.Label).Append('\n');
             if (sig.ToString() == m_signature) return;
-            var list = MenuEdit.List(m_menu);
-            if (list == null) return;
-            list.Clear();
+            m_menu.Clear();
             Fill(items);
         }
 
         internal void Start() { m_menu.StartReading(); }
 
-        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
+        internal override string Help() { return m_menu.GetHelp(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

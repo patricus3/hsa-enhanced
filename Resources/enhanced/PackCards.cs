@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using HSAEnhanced.Core;
+#if !WITHOUT_HSA
 using Accessibility;
+#endif
 using PegasusLettuce;
 
 namespace HSAEnhanced
@@ -12,7 +15,12 @@ namespace HSAEnhanced
         // start of HSA's AccessiblePackOpeningCard.GetLines(); null: HSA's own lines
         internal static List<string> Lines(object accessibleCard)
         {
-            var card = Ref.Get<PackOpeningCard>(accessibleCard, "m_card");
+            return MercLines(Ref.Get<PackOpeningCard>(accessibleCard, "m_card"));
+        }
+
+        // a revealed Mercenaries pack card; null for any other card
+        internal static List<string> MercLines(PackOpeningCard card)
+        {
             if (card == null || !card || !card.IsRevealed()) return null;
             var pack = Ref.Get<LettucePackComponent>(card, "m_mercenaryPackComponent");
             if (pack == null || !pack.HasMercenaryId) return null;

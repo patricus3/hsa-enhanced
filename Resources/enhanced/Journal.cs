@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Accessibility;
 using Assets;
 using Hearthstone.DataModels;
 using Hearthstone.Progression;
@@ -43,7 +42,7 @@ namespace HSAEnhanced
             Close();
             s_ui = new JournalUI(type);
             Log.Info("journal: ours (" + type + ")");
-            AccessibilityMgr.ShowUI(s_ui);
+            Core.Focus.Push(s_ui);
             s_ui.ShowMain(0);
             return true;
         }
@@ -54,7 +53,7 @@ namespace HSAEnhanced
             if (s_ui == null) return;
             var ui = s_ui;
             s_ui = null;
-            AccessibilityMgr.HideUI(ui);
+            Core.Focus.Pop(ui);
         }
 
         internal static string Word(string key) { return Str.Word(key); }
@@ -77,38 +76,38 @@ namespace HSAEnhanced
             return names.Count == 0 ? null : Str.Join(names.ToArray());
         }
 
-        internal static bool Online(AccessibleComponent speaker)
+        internal static bool Online(Core.Screen speaker)
         {
             if (Network.IsLoggedIn()) return true;
-            AccessibilityMgr.Output(speaker, Str.Join(Word("GLUE_OFFLINE_FEATURE_DISABLED_HEADER"), Word("GLUE_OFFLINE_FEATURE_DISABLED_BODY")));
+            speaker.Say(Str.Join(Word("GLUE_OFFLINE_FEATURE_DISABLED_HEADER"), Word("GLUE_OFFLINE_FEATURE_DISABLED_BODY")));
             return false;
         }
     }
 
-    class JournalUI : AccessibleUI
+    class JournalUI : Core.Screen
     {
         readonly Global.RewardTrackType m_type;
-        AccessibleMenu m_menu;
+        Core.Menu m_menu;
         Action m_rebuild;
 
         internal JournalUI(Global.RewardTrackType type) { m_type = type; }
 
         bool Battlegrounds { get { return m_type == Global.RewardTrackType.BATTLEGROUNDS; } }
 
-        void Show(AccessibleMenu menu, int at, Action rebuild)
+        void Show(Core.Menu menu, int at, Action rebuild)
         {
-            menu.SetIndex(Math.Max(0, Math.Min(at, menu.GetNumItems() - 1)));
-            m_menu = MenuEdit.Carry(m_menu, menu);
+            menu.Index = at;
+            m_menu = menu;
             m_rebuild = rebuild;
             m_menu.StartReading();
         }
 
-        int Index { get { return m_menu == null ? 0 : MenuEdit.GetIndex(m_menu); } }
+        int Index { get { return m_menu == null ? 0 : m_menu.Index; } }
 
         // after a request the game's data changes when the server answers: the menu is read again
         void RebuildSoon()
         {
-            FallbackWatcher.Run(RebuildAfter(Index));
+            Core.Jobs.Run(RebuildAfter(Index));
         }
 
         IEnumerator RebuildAfter(int at)
@@ -116,14 +115,13 @@ namespace HSAEnhanced
             yield return new WaitForSecondsRealtime(1.5f);
             if (!ReferenceEquals(this, s_current) || m_rebuild == null) yield break;
             m_rebuild();
-            if (m_menu != null) MenuEdit.SetIndex(m_menu, Math.Max(0, Math.Min(at, m_menu.GetNumItems() - 1)));
+            if (m_menu != null) m_menu.Index = at;
         }
 
         static JournalUI s_current;
 
-        void Say(string text) { AccessibilityMgr.Output(this, text); }
 
-        void Info(AccessibleMenu menu, string text)
+        void Info(Core.Menu menu, string text)
         {
             text = Str.Clean(text);
             if (text.Length > 0) menu.AddOption(text, () => Say(text));
@@ -133,7 +131,7 @@ namespace HSAEnhanced
         internal void ShowMain(int at)
         {
             s_current = this;
-            var menu = new AccessibleMenu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
+            var menu = new Core.Menu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
             if (!Battlegrounds && m_type != Global.RewardTrackType.APPRENTICE) AddEventEntry(menu);
             if (TavernGuideActive()) menu.AddOption(Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowTavernGuide(0));
             if (!TavernGuideActive() || Battlegrounds) menu.AddOption(Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE"), () => ShowQuests(false, 0));
@@ -150,7 +148,7 @@ namespace HSAEnhanced
 
         RewardTrack MainTrack() { return RewardTrackManager.Get().GetRewardTrack(m_type); }
 
-        void AddEventEntry(AccessibleMenu menu)
+        void AddEventEntry(Core.Menu menu)
         {
             var events = SpecialEventManager.Get();
             var current = events == null ? null : events.GetCurrentSpecialEvent(true);
@@ -184,7 +182,7 @@ namespace HSAEnhanced
         {
             var model = SpecialEventManager.Get().GetEventDataModelForCurrentEvent();
             if (model == null) { ShowMain(0); return; }
-            var menu = new AccessibleMenu(this, Str.Clean(model.Name), () => ShowMain(0));
+            var menu = new Core.Menu(this, Str.Clean(model.Name), () => ShowMain(0));
             Info(menu, EventTimeLeft());
             Info(menu, model.ShortDescription);
             Info(menu, model.LongDescription);
@@ -215,7 +213,7 @@ namespace HSAEnhanced
         void ShowEventTrackChoice(int trackId, int at)
         {
             var record = GameDbf.RewardTrack.GetRecord(trackId);
-            var menu = new AccessibleMenu(this, record == null || record.Name == null ? "" : Str.Clean(record.Name.GetString()), () => ShowEvent(0));
+            var menu = new Core.Menu(this, record == null || record.Name == null ? "" : Str.Clean(record.Name.GetString()), () => ShowEvent(0));
             menu.AddOption(Journal.Word("GLUE_CHOOSE"), () =>
             {
                 if (!Journal.Online(this)) return;
@@ -242,7 +240,7 @@ namespace HSAEnhanced
         #region Quests
         void ShowQuests(bool eventOnly, int at)
         {
-            var menu = new AccessibleMenu(this, Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE"), () => { if (eventOnly) ShowEvent(0); else ShowMain(0); });
+            var menu = new Core.Menu(this, Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE"), () => { if (eventOnly) ShowEvent(0); else ShowMain(0); });
             var quests = QuestManager.Get();
             var trackType = Battlegrounds ? QuestPool.RewardTrackType.BATTLEGROUNDS : QuestPool.RewardTrackType.GLOBAL;
             if (!eventOnly)
@@ -263,7 +261,7 @@ namespace HSAEnhanced
             Show(menu, at, () => ShowQuests(eventOnly, Index));
         }
 
-        void AddQuests(AccessibleMenu menu, QuestListDataModel list, string poolKey)
+        void AddQuests(Core.Menu menu, QuestListDataModel list, string poolKey)
         {
             if (list == null || list.Quests == null) return;
             var pool = poolKey == null ? null : Journal.Word(poolKey);
@@ -292,7 +290,7 @@ namespace HSAEnhanced
 
         void ShowQuest(QuestDataModel quest, int at)
         {
-            var menu = new AccessibleMenu(this, Str.Clean(string.IsNullOrEmpty(quest.Name) ? quest.Description : quest.Name), () => ShowQuests(false, 0));
+            var menu = new Core.Menu(this, Str.Clean(string.IsNullOrEmpty(quest.Name) ? quest.Description : quest.Name), () => ShowQuests(false, 0));
             Info(menu, QuestLabel(quest));
             if (quest.Status == QuestManager.QuestStatus.ACTIVE && !quest.IsChainQuest && quest.RerollCount > 0)
                 menu.AddOption(Str.Join(Journal.Word("GLUE_BACON_REROLL"), quest.RerollCount.ToString()), () =>
@@ -414,7 +412,7 @@ namespace HSAEnhanced
             Action back = () => { if (isEvent) ShowEvent(0); else ShowMain(0); };
             if (track == null || !track.IsValid) { back(); return; }
             var data = track.TrackDataModel;
-            var menu = new AccessibleMenu(this, Str.Clean(data.Name), back);
+            var menu = new Core.Menu(this, Str.Clean(data.Name), back);
             int current = data.Level;
             Info(menu, Str.Join(Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", current),
                 Str.Game(isEvent ? "GLUE_PROGRESSION_EVENT_TAB_REWARD_POPUP_INCOMPLETE_LEVEL" : "GLOBAL_PROGRESSION_REWARD_TRACK_XP", data.Xp) + " / " + data.XpNeeded,
@@ -451,7 +449,7 @@ namespace HSAEnhanced
             foreach (var n in Nodes(track)) if (n.Level == level) { node = n; break; }
             if (node == null) { ShowTrack(track, isEvent, 0); return; }
             int current = track.TrackDataModel.Level;
-            var menu = new AccessibleMenu(this, Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", level), () => ShowTrack(track, isEvent, 0));
+            var menu = new Core.Menu(this, Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", level), () => ShowTrack(track, isEvent, 0));
             foreach (var t in Tiers(node))
             {
                 var tier = t;
@@ -488,7 +486,7 @@ namespace HSAEnhanced
         // a choose one reward: its items, Enter claims the one chosen
         void ChooseOne(RewardListDataModel list, string title, Action back, Action<RewardItemDataModel> claim)
         {
-            var menu = new AccessibleMenu(this, title, back);
+            var menu = new Core.Menu(this, title, back);
             Info(menu, list.Description);
             foreach (var i in list.Items)
             {
@@ -510,7 +508,7 @@ namespace HSAEnhanced
         {
             var achievements = AchievementManager.Get();
             try { achievements.GetAchievementDataModel(1); } catch { }      // (loads every group's achievements)
-            var menu = new AccessibleMenu(this, Journal.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE"), () => ShowMain(0));
+            var menu = new Core.Menu(this, Journal.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE"), () => ShowMain(0));
             Info(menu, Str.Game("GLOBAL_PROGRESSION_POINTS", achievements.TotalPointsExcludeRetired));
             var recent = achievements.GetRecentlyCompletedAchievements();
             if (recent != null && recent.Count > 0)
@@ -545,7 +543,7 @@ namespace HSAEnhanced
 
         void ShowSubcategories(AchievementCategoryDataModel category, int at)
         {
-            var menu = new AccessibleMenu(this, Str.Clean(category.Name), () => ShowCategories(0));
+            var menu = new Core.Menu(this, Str.Clean(category.Name), () => ShowCategories(0));
             try { AchievementManager.Get().SelectCategory(category); } catch { }
             if (category.Subcategories != null && category.Subcategories.Subcategories != null)
                 foreach (var s in category.Subcategories.Subcategories)
@@ -567,7 +565,7 @@ namespace HSAEnhanced
         void ShowSubcategory(AchievementCategoryDataModel category, AchievementSubcategoryDataModel sub, int at)
         {
             Action back = () => ShowSubcategories(category, 0);
-            var menu = new AccessibleMenu(this, Str.Clean(sub.Name), back);
+            var menu = new Core.Menu(this, Str.Clean(sub.Name), back);
             var sections = sub.Sections == null || sub.Sections.Sections == null ? new List<AchievementSectionDataModel>() : new List<AchievementSectionDataModel>(sub.Sections.Sections);
             foreach (var section in sections)
             {
@@ -582,7 +580,7 @@ namespace HSAEnhanced
             Show(menu, at, () => ShowSubcategory(category, sub, Index));
         }
 
-        void AddAchievement(AccessibleMenu menu, AchievementDataModel a, Action back)
+        void AddAchievement(Core.Menu menu, AchievementDataModel a, Action back)
         {
             if (a == null) return;
             var achievement = a;
@@ -622,7 +620,7 @@ namespace HSAEnhanced
 
         void ShowAchievementList(string title, List<AchievementDataModel> list, Action back, int at)
         {
-            var menu = new AccessibleMenu(this, title, back);
+            var menu = new Core.Menu(this, title, back);
             foreach (var a in list) AddAchievement(menu, a, () => ShowAchievementList(title, list, back, 0));
             menu.AddOption(Str.Back, back);
             Show(menu, at, () => ShowAchievementList(title, list, back, Index));
@@ -654,7 +652,7 @@ namespace HSAEnhanced
         #region Tavern Guide
         void ShowTavernGuide(int at)
         {
-            var menu = new AccessibleMenu(this, Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowMain(0));
+            var menu = new Core.Menu(this, Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowMain(0));
             TavernGuideDataModel guide = null;
             try { guide = TavernGuideManager.Get().GetTavernGuideDataModel(); } catch { }
             if (guide != null && guide.TavernGuideQuestSetCategories != null)
@@ -674,7 +672,7 @@ namespace HSAEnhanced
 
         void ShowQuestSet(TavernGuideQuestSetDataModel set, int at)
         {
-            var menu = new AccessibleMenu(this, Str.Clean(set.Title), () => ShowTavernGuide(0));
+            var menu = new Core.Menu(this, Str.Clean(set.Title), () => ShowTavernGuide(0));
             Info(menu, set.Description);
             if (set.Quests != null)
                 foreach (var q in set.Quests)
@@ -696,8 +694,10 @@ namespace HSAEnhanced
         }
         #endregion
 
-        public void HandleAccessibleInput() { if (m_menu != null) m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.Help(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

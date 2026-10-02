@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Accessibility;
+using HSAEnhanced.Core;
 
 namespace HSAEnhanced
 {
@@ -12,8 +12,8 @@ namespace HSAEnhanced
     // is not read. Words from the game's and HSA's string tables.
     static class CombatCards
     {
-        static string L(LocalizationKey key) { return LocalizationUtils.Get(key); }
-        static string F(LocalizationKey key, params object[] args) { return LocalizationUtils.Format(key, args); }
+        static string L(string key) { return Speech.S(key); }
+        static string F(string key, params object[] args) { return Speech.S(key, args); }
 
         internal static List<string> Lines(Card card)
         {
@@ -25,7 +25,7 @@ namespace HSAEnhanced
                 if (e.IsHero()) Hero(card, e, lines);
                 else if (e.IsHeroPower()) HeroPower(card, e, lines);
                 else if (e.IsWeapon()) Weapon(card, e, lines);
-                else if (e.IsSecret() && !e.IsControlledByFriendlySidePlayer() && e.GetZone() == TAG_ZONE.SECRET && !e.IsQuest() && !e.IsSideQuest() && !e.IsQuestline()) Header(card, e, F(LocalizationKey.GLOBAL_SECRET, GameStrings.GetClassName(e.GetClass())), lines);
+                else if (e.IsSecret() && !e.IsControlledByFriendlySidePlayer() && e.GetZone() == TAG_ZONE.SECRET && !e.IsQuest() && !e.IsSideQuest() && !e.IsQuestline()) Header(card, e, Speech.S(K.GLOBAL_SECRET, GameStrings.GetClassName(e.GetClass())), lines);
                 else if (e.IsQuest() || e.IsSideQuest() || e.IsQuestline()) Quest(card, e, lines);
                 else Normal(card, e, lines);
             }
@@ -36,16 +36,47 @@ namespace HSAEnhanced
             return lines;
         }
 
+        // a card outside a match (a popup, the collection): read as a card in the hand is
+        internal static List<string> Lines(EntityDef d)
+        {
+            var lines = new List<string>();
+            if (d == null) return lines;
+            try
+            {
+                lines.Add(Str.Clean(d.GetName()));
+                if (!d.IsHero() || d.GetCost() > 0) lines.Add(Speech.S(K.READ_CARD_COST, d.GetCost()));
+                if (d.GetTag(GAME_TAG.HIDE_STATS) != 1)
+                {
+                    if (d.IsMinion()) lines.Add(Speech.S(K.READ_CARD_ATK_HEALTH, d.GetATK(), d.GetHealth()));
+                    else if (d.IsWeapon()) lines.Add(Speech.S(K.READ_CARD_ATK_DURABILITY, d.GetATK(), d.GetHealth()));
+                    else if (d.IsLocation()) lines.Add(Speech.S(K.READ_CARD_DURABILITY, d.GetHealth()));
+                }
+                if (d.IsHero()) lines.Add(Speech.S(K.READ_HERO_CARD_ARMOR, d.GetTag(GAME_TAG.ARMOR)));
+                string text = null;
+                try { text = d.GetCardTextInHand(); } catch { }
+                lines.Add(Str.Clean(text));
+                try { lines.Add(Str.Clean(d.GetRaceText())); } catch { }
+                try { lines.Add(Str.Clean(GameStrings.GetCardTypeName(d.GetCardType()))); } catch { }
+                var rarity = d.GetRarity();
+                if (rarity != TAG_RARITY.FREE && rarity != TAG_RARITY.INVALID)
+                    lines.Add(Str.Clean(GameStrings.GetRarityText(d.IsElite() ? TAG_RARITY.LEGENDARY : rarity)));
+                try { lines.Add(Str.Clean(d.GetFlavorText())); } catch { }
+            }
+            catch (Exception ex) { Log.Error(ex); }
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            return lines;
+        }
+
         // a hidden card (the opponent's hand, a face-down card): the game shows it as a card back
-        internal static string HiddenName() { return L(LocalizationKey.GLOBAL_CARD); }
+        internal static string HiddenName() { return Speech.S(K.GLOBAL_CARD); }
 
         #region Building blocks
         static void Header(Card card, Entity e, string name, List<string> lines)
         {
             lines.Add(Str.Clean(name));
-            if (e.HasTag(GAME_TAG.EVIL_GLOW)) lines.Add(L(LocalizationKey.GLOBAL_CURSED));
-            if (e.HasTag(GAME_TAG.VALEERASHADOW)) lines.Add(L(LocalizationKey.GLOBAL_HAUNTED));
-            if (Ready(card, e)) lines.Add(L(LocalizationKey.GLOBAL_READY));
+            if (e.HasTag(GAME_TAG.EVIL_GLOW)) lines.Add(Speech.S(K.GLOBAL_CURSED));
+            if (e.HasTag(GAME_TAG.VALEERASHADOW)) lines.Add(Speech.S(K.GLOBAL_HAUNTED));
+            if (Ready(card, e)) lines.Add(Speech.S(K.GLOBAL_READY));
             else
             {
                 var why = WhyNot(card, e);
@@ -96,8 +127,8 @@ namespace HSAEnhanced
         static string Cost(Entity e)
         {
             if (CostHidden(e)) return null;
-            if (e.GetRealTimeCardCostsHealth()) return F(LocalizationKey.READ_HERO_CARD_HEALTH, e.GetCost());
-            return F(LocalizationKey.READ_CARD_COST, e.GetCost());
+            if (e.GetRealTimeCardCostsHealth()) return Speech.S(K.READ_HERO_CARD_HEALTH, e.GetCost());
+            return Speech.S(K.READ_CARD_COST, e.GetCost());
         }
 
         static bool StatsHidden(Entity e)
@@ -109,16 +140,16 @@ namespace HSAEnhanced
         static string Resources(Entity e)
         {
             if (StatsHidden(e)) return null;
-            if (e.IsMinion()) return F(LocalizationKey.READ_CARD_ATK_HEALTH, e.GetATK(), e.GetCurrentHealth());
-            if (e.IsWeapon()) return F(LocalizationKey.READ_CARD_ATK_DURABILITY, e.GetATK(), e.GetCurrentHealth());
-            if (e.IsLocation()) return F(LocalizationKey.READ_CARD_DURABILITY, e.GetCurrentHealth());
+            if (e.IsMinion()) return Speech.S(K.READ_CARD_ATK_HEALTH, e.GetATK(), e.GetCurrentHealth());
+            if (e.IsWeapon()) return Speech.S(K.READ_CARD_ATK_DURABILITY, e.GetATK(), e.GetCurrentHealth());
+            if (e.IsLocation()) return Speech.S(K.READ_CARD_DURABILITY, e.GetCurrentHealth());
             if (e.IsHero())
             {
                 var parts = new List<string>();
-                if (e.GetATK() > 0 && !e.HasTag(GAME_TAG.HIDE_ATTACK)) parts.Add(F(LocalizationKey.READ_HERO_CARD_ATK, e.GetATK()));
-                if (e.GetArmor() > 0) parts.Add(F(LocalizationKey.READ_HERO_CARD_ARMOR, e.GetArmor()));
-                if (!e.HasTag(GAME_TAG.HIDE_HEALTH)) parts.Add(F(LocalizationKey.READ_HERO_CARD_HEALTH, e.GetCurrentHealth()));
-                return parts.Count == 0 ? null : AccessibleSpeechUtils.HumanizeList(parts);
+                if (e.GetATK() > 0 && !e.HasTag(GAME_TAG.HIDE_ATTACK)) parts.Add(Speech.S(K.READ_HERO_CARD_ATK, e.GetATK()));
+                if (e.GetArmor() > 0) parts.Add(Speech.S(K.READ_HERO_CARD_ARMOR, e.GetArmor()));
+                if (!e.HasTag(GAME_TAG.HIDE_HEALTH)) parts.Add(Speech.S(K.READ_HERO_CARD_HEALTH, e.GetCurrentHealth()));
+                return parts.Count == 0 ? null : Speech.HumanizeList(parts);
             }
             return null;
         }
@@ -144,7 +175,7 @@ namespace HSAEnhanced
             add(e.HasWindfury(), "GLOBAL_KEYWORD_WINDFURY");
             add(e.IsVenomous(), "GLOBAL_KEYWORD_VENOMOUS");
             add(e.HasTag(GAME_TAG.HAS_DARK_GIFT), "GLOBAL_KEYWORD_DARKGIFT");
-            return words.Count == 0 ? null : AccessibleSpeechUtils.HumanizeList(words);
+            return words.Count == 0 ? null : Speech.HumanizeList(words);
         }
 
         // stats with the status words after them (a card in play); the words alone when there are no stats
@@ -217,7 +248,7 @@ namespace HSAEnhanced
             if (e.GetZone() == TAG_ZONE.PLAY)
             {
                 bool friendly = e.IsControlledByFriendlySidePlayer();
-                Header(card, e, L(friendly ? LocalizationKey.GAMEPLAY_ZONE_PLAYER_HERO : LocalizationKey.GAMEPLAY_ZONE_OPPONENT_HERO), lines);
+                Header(card, e, L(friendly ? K.GAMEPLAY_ZONE_PLAYER_HERO : K.GAMEPLAY_ZONE_OPPONENT_HERO), lines);
                 lines.Add(ResourcesAndEffects(e));
                 try { lines.Add(Str.Clean(e.GetEntityDef().GetName())); } catch { }
                 var gs = GameState.Get();
@@ -232,7 +263,7 @@ namespace HSAEnhanced
             Header(card, e, e.GetName(), lines);
             lines.Add(Cost(e));
             lines.Add(Type(e));
-            lines.Add(F(LocalizationKey.READ_HERO_CARD_ARMOR, e.GetArmor()));
+            lines.Add(Speech.S(K.READ_HERO_CARD_ARMOR, e.GetArmor()));
             lines.Add(Description(e));
             try
             {
@@ -240,8 +271,8 @@ namespace HSAEnhanced
                 var power = string.IsNullOrEmpty(powerId) ? null : DefLoader.Get().GetEntityDef(powerId);
                 if (power != null)
                 {
-                    lines.Add(Str.Join(L(LocalizationKey.GAMEPLAY_ZONE_PLAYER_HERO_POWER), Str.Clean(power.GetName())));
-                    lines.Add(F(LocalizationKey.READ_CARD_COST, power.GetCost()));
+                    lines.Add(Str.Join(Speech.S(K.GAMEPLAY_ZONE_PLAYER_HERO_POWER), Str.Clean(power.GetName())));
+                    lines.Add(Speech.S(K.READ_CARD_COST, power.GetCost()));
                     lines.Add(Str.Clean(power.GetCardTextInHand()));
                 }
             }
@@ -273,7 +304,7 @@ namespace HSAEnhanced
             Header(card, e, e.GetName(), lines);
             lines.Add(Description(e));
             int total = e.GetTag(GAME_TAG.QUEST_PROGRESS_TOTAL);
-            if (total > 0) lines.Add(F(LocalizationKey.TOAST_QUEST_PROGRESS_TOAST_PROGRESS, e.GetTag(GAME_TAG.QUEST_PROGRESS), total));
+            if (total > 0) lines.Add(Speech.S(K.TOAST_QUEST_PROGRESS_TOAST_PROGRESS, e.GetTag(GAME_TAG.QUEST_PROGRESS), total));
             if (e.IsSideQuest()) return;
             try
             {
@@ -281,7 +312,7 @@ namespace HSAEnhanced
                 var reward = string.IsNullOrEmpty(rewardId) ? null : DefLoader.Get().GetEntityDef(rewardId);
                 if (reward != null)
                 {
-                    lines.Add(F(LocalizationKey.UI_QUEST_REWARD_DESCRIPTION, Str.Clean(reward.GetName())));
+                    lines.Add(Speech.S(K.UI_QUEST_REWARD_DESCRIPTION, Str.Clean(reward.GetName())));
                     lines.Add(Str.Clean(reward.GetCardTextInHand()));
                 }
             }
@@ -296,7 +327,7 @@ namespace HSAEnhanced
             var e = card == null ? null : card.GetEntity();
             if (e == null || !e.IsMinion()) return lines;
             var def = e.GetEntityDef();
-            if (def != null && !e.HasTag(GAME_TAG.HIDE_STATS)) lines.Add(F(LocalizationKey.READ_CARD_ATK_HEALTH, def.GetATK(), def.GetHealth()));
+            if (def != null && !e.HasTag(GAME_TAG.HIDE_STATS)) lines.Add(Speech.S(K.READ_CARD_ATK_HEALTH, def.GetATK(), def.GetHealth()));
             var seen = new Dictionary<string, int>();
             var order = new List<string>();
             var texts = new Dictionary<string, string>();

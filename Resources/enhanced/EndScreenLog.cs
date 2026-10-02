@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using HSAEnhanced.Core;
+#if !WITHOUT_HSA
 using Accessibility;
+#endif
 using UnityEngine;
 
 namespace HSAEnhanced

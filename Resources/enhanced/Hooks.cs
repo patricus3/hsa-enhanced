@@ -138,9 +138,43 @@ namespace HSAEnhanced
             catch (Exception e) { Log.Error(e); return null; }
         }
 
-        // start of AccessibilityMgr.Output(AccessibleComponent speaker, string, bool); our own
-        // fallback menu speaking does not count as the screen speaking
-        public static void OnSpeech(object speaker) { if (!(speaker is FallbackUI)) FallbackWatcher.Spoke(); }
+        // start of AccessibilityMgr.Output(AccessibleComponent speaker, string, bool); true: not said
+        // (Hearthstone Access's screens are quiet while one of ours has focus). Our own fallback
+        // menu speaking does not count as the screen speaking
+        public static bool OnSpeech(object speaker)
+        {
+            try
+            {
+                if (!(speaker is FallbackUI)) FallbackWatcher.Spoke();
+                if (Core.Focus.Mutes(speaker)) return true;
+            }
+            catch (Exception e) { Log.Error(e); }
+            return false;
+        }
+
+        // start of AccessibilityMgr.IsCurrentlyFocused(component); true: it answers false (one of our
+        // screens has focus, so nothing of Hearthstone Access's does)
+        public static bool OursFocused(object component)
+        {
+            try { return Core.Focus.Top != null; }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of AccessibilityMgr.ShowUI(ui); true: not shown (Hearthstone Access's friends list;
+        // ours reads it)
+        public static bool BeforeShowUI(object ui)
+        {
+            try { return Friends.IsHsaList(ui); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
+
+        // start of AccessibilityMgr.HandleKeyboardInput(); true: one of our screens has focus and
+        // handled the key press (Hearthstone Access's routing is skipped)
+        public static bool CoreKeys()
+        {
+            try { return Core.Focus.HandleKeys(); }
+            catch (Exception e) { Log.Error(e); return false; }
+        }
 
         // start of AdventureMissionDisplay.selectWing(AdventureBossCoin) (HSA's); true: not started.
         // The game's own state of the mission's wing decides (owned, playable, unlocked, available)

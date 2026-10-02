@@ -2,7 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using HSAEnhanced.Core;
+#if !WITHOUT_HSA
 using Accessibility;
+#endif
 
 namespace HSAEnhanced
 {
@@ -16,6 +19,7 @@ namespace HSAEnhanced
     {
         static readonly HashSet<string> Skip = new HashSet<string> { "IconType", "SubLayout", "Url", "DataModelDisplayName", "ImageType" };
 
+#if !WITHOUT_HSA
         // start of HSA's MessagePopupDisplay.ReadMessage(data); true: read here
         internal static bool Read(object popup, object data)
         {
@@ -34,6 +38,7 @@ namespace HSAEnhanced
             foreach (var line in lines) AccessibilityMgr.Output(ui, line);
             return true;
         }
+#endif
 
         // the texts of a data model, then those of the models it holds (the items, a launch effect)
         internal static void Collect(object model, List<string> lines, int depth)

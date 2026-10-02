@@ -15,8 +15,11 @@ fail() { echo; echo "ERROR: $*"; echo "Installation aborted. Press Enter to clos
 say "Hearthstone Access for Mac - installation"
 # --use-hsa-menus: Hearthstone Access's own menus instead of the enhanced menu system
 mkdir -p "$H"; MENUS=enhanced
-for a in "$@"; do [ "$a" = "--use-hsa-menus" ] && MENUS=hsa; done
+# --without-hsa: our own core only, without Hearthstone Access (most screens are not ours yet)
+MODE=hsa
+for a in "$@"; do [ "$a" = "--use-hsa-menus" ] && MENUS=hsa; [ "$a" = "--without-hsa" ] && MODE=without-hsa; done
 echo "$MENUS" > "$H/menus"; echo "menus: $MENUS"
+echo "$MODE" > "$H/mode"; echo "mode: $MODE"
 [ -d /Applications/Hearthstone/Hearthstone.app ] || fail "Hearthstone not found in /Applications/Hearthstone. Install it with Battle.net first."
 [ -d /Applications/Battle.net.app ] || fail "Battle.net not found in the Applications folder."
 pgrep -x Hearthstone >/dev/null && fail "Hearthstone is running. Quit the game and run the installer again."
@@ -39,11 +42,16 @@ for d in Resources zrodla; do [ -f "$HERE/$d/rebuild.sh" ] && { FILES="$HERE/$d"
 rsync -a --delete --exclude downloads --exclude work "$FILES/" "$SRC/" || fail "Could not copy the files."
 chmod +x "$SRC/rebuild.sh" "$SRC/hsa-watch.sh" "$SRC/update-hsa.sh"
 
-say "Downloading Hearthstone Access from hearthstoneaccess.com and its source diff from GitHub"
-"$SRC/update-hsa.sh"; [ $? -eq 2 ] && fail "Could not get a matching Hearthstone Access release and source diff. Try again later, once the HSA developers have published both."
+if [ "$MODE" = without-hsa ]; then
+    say "Building our core for your game version (without Hearthstone Access)"
+    "$SRC/rebuild.sh" || fail "Building the mod failed. Details are above."
+else
+    say "Downloading Hearthstone Access from hearthstoneaccess.com and its source diff from GitHub"
+    "$SRC/update-hsa.sh"; [ $? -eq 2 ] && fail "Could not get a matching Hearthstone Access release and source diff. Try again later, once the HSA developers have published both."
 
-say "Building the mod for your game version (about a minute)"
-"$SRC/rebuild.sh" "$SRC/downloads/hsa.zip" || fail "Building the mod failed. Details are above."
+    say "Building the mod for your game version (about a minute)"
+    "$SRC/rebuild.sh" "$SRC/downloads/hsa.zip" || fail "Building the mod failed. Details are above."
+fi
 
 say "Installing the watcher that enables the mod whenever Battle.net starts"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/HearthstoneAccess"

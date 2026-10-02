@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Accessibility;
+using HSAEnhanced.Core;
 using UnityEngine;
 
 namespace HSAEnhanced
@@ -28,7 +28,7 @@ namespace HSAEnhanced
                 Hide();
                 s_ui = new MercRewardsUI(shown);
                 Log.Info("mercenaries: rewards " + string.Join(" | ", Lines(shown).ToArray()));
-                AccessibilityMgr.ShowUI(s_ui);
+                Core.Focus.Push(s_ui);
                 s_ui.Start();
             }
             catch (Exception e) { Log.Error(e); Hide(); }
@@ -39,7 +39,7 @@ namespace HSAEnhanced
             if (s_ui == null) return;
             var ui = s_ui;
             s_ui = null;
-            AccessibilityMgr.HideUI(ui);
+            Core.Focus.Pop(ui);
         }
 
         // each mercenary as the overlay shows it: name, +N xp, its level, Level up!
@@ -70,24 +70,26 @@ namespace HSAEnhanced
         }
     }
 
-    class MercRewardsUI : AccessibleUI
+    class MercRewardsUI : Core.Screen
     {
         internal readonly MercenariesExperienceTwoScoop Scoop;
-        readonly AccessibleMenu m_menu;
+        readonly Core.Menu m_menu;
 
         internal MercRewardsUI(MercenariesExperienceTwoScoop scoop)
         {
             Scoop = scoop;
-            m_menu = new AccessibleMenu(this, LocalizedText.UI_POPUP, () => MercRewards.Close(Scoop));
+            m_menu = new Core.Menu(this, Core.Speech.S(Core.K.UI_POPUP), () => MercRewards.Close(Scoop));
             var ui = this;
-            foreach (var l in MercRewards.Lines(scoop)) { var line = l; m_menu.AddOption(line, () => AccessibilityMgr.Output(ui, line)); }
+            foreach (var l in MercRewards.Lines(scoop)) { var line = l; m_menu.AddOption(line, () => ui.Say(line)); }
             m_menu.AddOption(Str.Word("GLOBAL_CONTINUE"), () => MercRewards.Close(Scoop));
         }
 
         internal void Start() { m_menu.StartReading(); }
 
-        public void HandleAccessibleInput() { m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu.GetHelp(); }
+        internal override string Help() { return m_menu.GetHelp(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

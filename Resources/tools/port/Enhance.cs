@@ -327,8 +327,34 @@ static class Enhance
         // gets focus handles nothing, and the fallback menu takes it over
         new("Accessibility.AccessibilityMgr", "Output", "OnSpeech", (il, m, hook, o) =>
         {
+            var original = m.Body.Instructions[0];
             o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
         }, AtStart: true, Params: "Accessibility.AccessibleComponent,System.String,System.Boolean"),
+        new("Accessibility.AccessibilityMgr", "IsCurrentlyFocused", "OursFocused", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ldc_I4_0));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("Accessibility.AccessibilityMgr", "ShowUI", "BeforeShowUI", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Ldarg_0)); o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // our core: while one of our screens has focus it gets the keys (docs/core-spec.md)
+        new("Accessibility.AccessibilityMgr", "HandleKeyboardInput", "CoreKeys", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
         // adventure missions: the game's own locks count (HSA's mission list offers locked
         // missions, and the server refuses to start them)
         new("AdventureMissionDisplay", "selectWing", "BeforeSelectMission", (il, m, hook, o) =>
@@ -460,18 +486,38 @@ static class Enhance
         return false;
     }
 
+    // --without-hsa: the game's own Assembly-CSharp, no Hearthstone Access in it; only our core
+    // (HSAEnhanced built with -p:WithoutHsa=true) goes in, through game methods
+    static readonly Site[] StandaloneSites =
+    {
+        // the game's keyboard handling: our screens first (they skip the game's when they take a key)
+        new("UniversalInputManager", "UpdateInput", "StandaloneKeys", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        // the game's error line in a match (not enough mana, ...): spoken
+        new("GameplayErrorManager", "DisplayMessage", "StandaloneGameError", (il, m, hook, o) =>
+        {
+            o.Add(il.Create(OpCodes.Ldarg_1)); o.Add(il.Create(OpCodes.Call, hook));
+        }, AtStart: true, Params: "System.String"),
+    };
+
     // --hsa-menus: the installer's --use-hsa-menus (our menu system off)
     static bool HsaMenus;
 
-    public static bool Hook(string asmPath, string enhancedPath, string outPath, string refDir, bool hsaMenus = false)
+    public static bool Hook(string asmPath, string enhancedPath, string outPath, string refDir, bool hsaMenus = false, bool withoutHsa = false)
     {
         HsaMenus = hsaMenus;
+        var sites = withoutHsa ? StandaloneSites : Sites;
         var res = Resolver(Path.GetDirectoryName(Path.GetFullPath(asmPath))!, Path.GetDirectoryName(Path.GetFullPath(enhancedPath))!, refDir);
         var M = ModuleDefinition.ReadModule(asmPath, new ReaderParameters { AssemblyResolver = res, InMemory = true });
         var E = ModuleDefinition.ReadModule(enhancedPath, new ReaderParameters { AssemblyResolver = res });
         var hooks = E.GetType("HSAEnhanced.Hooks") ?? throw new Exception("HSAEnhanced.Hooks not found");
         int done = 0;
-        foreach (var s in Sites)
+        foreach (var s in sites)
         {
             var type = M.GetType(s.Type);
             var target = type?.Methods.FirstOrDefault(x => x.Name == s.Method && x.HasBody
@@ -503,7 +549,8 @@ static class Enhance
             done++;
         }
         Save(M, outPath);
-        Console.WriteLine($"hooks: {done} of {Sites.Length} installed");
+        Console.WriteLine($"hooks: {done} of {sites.Length} installed");
+        if (withoutHsa && done == 0) { Console.WriteLine("HOOK ERROR: the game's keyboard hook is missing"); return false; }
         return true;
     }
 }

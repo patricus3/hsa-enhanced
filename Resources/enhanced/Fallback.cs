@@ -123,14 +123,16 @@ namespace HSAEnhanced
 
         void Update()
         {
+            Core.Focus.Tick();      // every frame: our screens get focus back when a popup over them closes
+            Friends.Tick();         // every frame: ours as soon as the game shows its friends list
             MercBattle.Tick();      // every frame: the ability tray opens and closes quickly
             EndScreenLog.Tick();    // every frame: an Enter on the end screen is logged with its state
             if (Time.unscaledTime < m_next) return;
             m_next = Time.unscaledTime + 0.5f;
             try
             {
-                TickPopups();
-                TickButtonListMenus();
+                // nothing of the game's is taken over while one of our screens has focus
+                if (!Core.Focus.Any) { TickPopups(); TickButtonListMenus(); }
                 CreditsWatcher.Ensure();
                 Mercenaries.Tick();
                 MercRewards.Tick();
@@ -193,6 +195,8 @@ namespace HSAEnhanced
             var uis = Ref.Field(Mgr, "s_curUIs")?.GetValue(null) as IList;
             if (uis != null) foreach (var u in uis) if (u != m_ui) return;
             if (SetRotation.Active) return;
+            // one of our own screens is open: it reads the game's screen under it
+            if (Core.Focus.Any) return;
             if (Ref.Field(Mgr, "s_forcedKey")?.GetValue(null) != null) return;
             if (Ref.Field(Mgr, "s_curNotificationDismissButton")?.GetValue(null) as UnityEngine.Object) return;
 

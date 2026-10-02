@@ -12,9 +12,13 @@ MANAGED="$GAME/Hearthstone.app/Contents/Resources/Data/Managed"
 DEST="$GAME/HearthstoneAccess"
 export PATH="$HOME/.dotnet:$PATH" DOTNET_ROOT="$HOME/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
-ZIP="${1:-$(ls -t "$ROOT"/downloads/*.zip | head -1)}"
+# --without-hsa (the installer writes ../mode): only our own core, no Hearthstone Access
+MODE="$(cat "$ROOT/../mode" 2>/dev/null || echo hsa)"
 WORK="$ROOT/work"
-echo "HSA zip: $ZIP"
+if [ "$MODE" != without-hsa ]; then
+    ZIP="${1:-$(ls -t "$ROOT"/downloads/*.zip | head -1)}"
+    echo "HSA zip: $ZIP"
+fi
 
 command -v dotnet >/dev/null || { echo "missing .NET SDK in ~/.dotnet"; exit 1; }
 
@@ -31,6 +35,22 @@ clang -dynamiclib -fobjc-arc -O2 -arch arm64 -arch x86_64 -Wno-deprecated-declar
       -I"$ROOT/voiceover/prism" -L"$ROOT/voiceover/prism" -lprism -Wl,-rpath,@loader_path \
       -o "$ROOT/voiceover/libHSAVoiceOver.dylib" "$ROOT/voiceover/hsavoiceover.m"
 
+ENH=""
+if [ "$MODE" = without-hsa ]; then
+echo "== without Hearthstone Access: our own core only"
+rm -rf "$WORK" && mkdir -p "$WORK/out" "$WORK/enh/check"
+cp "$MANAGED/Assembly-CSharp.dll" "$WORK/vanilla-Assembly-CSharp.dll"
+cp "$WORK/vanilla-Assembly-CSharp.dll" "$WORK/out/Assembly-CSharp.dll"
+base=$(port check "$WORK/vanilla-Assembly-CSharp.dll" "$MANAGED" | tail -1 | awk '{print $2}')
+dotnet build -c Release -v q "$ROOT/enhanced" -p:GameManaged="$MANAGED" -p:HsaAssembly="$WORK/vanilla-Assembly-CSharp.dll" -p:WithoutHsa=true -o "$WORK/enh/bin" > "$WORK/enhanced-build.log" 2>&1     || { tail -20 "$WORK/enhanced-build.log"; echo "our core could not be built"; exit 1; }
+port hook "$WORK/out/Assembly-CSharp.dll" "$WORK/enh/bin/HSAEnhanced.dll" "$WORK/out/Assembly-CSharp.dll" "$MANAGED" --without-hsa
+cp "$WORK/out/Assembly-CSharp.dll" "$WORK/enh/bin/HSAEnhanced.dll" "$WORK/enh/check/"
+enow=$(port check "$WORK/enh/check/Assembly-CSharp.dll" "$WORK/enh/check" "$MANAGED" "$(dirname "$TOLK")" | tail -1 | awk '{print $2}')
+eadd=$(port check "$WORK/enh/check/HSAEnhanced.dll" "$WORK/enh/check" "$MANAGED" | tee "$WORK/enh/check.log" | tail -1 | awk '{print $2}')
+echo "unresolved: vanilla $base, ours $enow, core $eadd"
+{ [ "$enow" -le "$base" ] && [ "$eadd" -eq 0 ]; } || { echo "the build has unresolved references, see $WORK/enh/check.log"; exit 1; }
+ENH="$WORK/enh/bin/HSAEnhanced.dll"
+else
 echo "== unpack HSA"
 rm -rf "$WORK/hsa" && mkdir -p "$WORK/hsa" "$WORK/out"
 unzip -q "$ZIP" -d "$WORK/hsa"
@@ -55,7 +75,6 @@ echo "unresolved: vanilla $base, ported $now"
 
 echo "== enhancements: Black Market, menus built from what the game shows (enhanced/)"
 # optional: if this fails (e.g. a game update renamed something) the plain HSA port is installed
-ENH=""
 rm -rf "$WORK/enh" && mkdir -p "$WORK/enh"
 cp "$WORK/out/Assembly-CSharp.dll" "$WORK/enh/Assembly-CSharp.dll"
 if port expose "$WORK/enh/Assembly-CSharp.dll" "$MANAGED"    && dotnet build -c Release -v q "$ROOT/enhanced" -p:GameManaged="$MANAGED" -p:HsaAssembly="$WORK/enh/Assembly-CSharp.dll" -o "$WORK/enh/bin" > "$WORK/enhanced-build.log" 2>&1    && port hook "$WORK/enh/Assembly-CSharp.dll" "$WORK/enh/bin/HSAEnhanced.dll" "$WORK/enh/Assembly-CSharp.dll" "$MANAGED" \
@@ -68,22 +87,32 @@ if port expose "$WORK/enh/Assembly-CSharp.dll" "$MANAGED"    && dotnet build -c 
 else
     echo "WARNING: enhancements could not be built (see $WORK/enhanced-build.log), installing plain Hearthstone Access"
 fi
+fi
 
 echo "== stage $DEST"
 STAGE="$(mktemp -d "$GAME/.hsa-stage.XXXXXX")"
 O="$STAGE/overlay"
 mkdir -p "$O/Hearthstone.app/Contents/Resources/Data/Managed" "$O/Accessibility" "$O/Strings"
-cp "$WORK/out/Assembly-CSharp.dll" "$TOLK" "$COMPAT" ${ENH:+"$ENH"} "$O/Hearthstone.app/Contents/Resources/Data/Managed/"
-cp -R "$WORK/hsa/patch/Accessibility/Sounds" "$O/Accessibility/"
-cp "$WORK/hsa/patch/Accessibility/hsa_manifest.json" "$O/Accessibility/" 2>/dev/null || true
-for d in "$WORK"/hsa/patch/Strings/*/; do
-    loc=$(basename "$d"); [ -f "$d/ACCESSIBILITY.txt" ] || continue
-    mkdir -p "$O/Strings/$loc" && cp "$d/ACCESSIBILITY.txt" "$O/Strings/$loc/"
-done
+if [ "$MODE" = without-hsa ]; then
+    cp "$WORK/out/Assembly-CSharp.dll" "$TOLK" "$ENH" "$O/Hearthstone.app/Contents/Resources/Data/Managed/"
+    # Hearthstone Access's texts, which come with our mod: our core reads them
+    for d in "$ROOT"/strings/*/; do
+        loc=$(basename "$d"); [ -f "$d/ACCESSIBILITY.txt" ] || continue
+        mkdir -p "$O/Strings/$loc" && cp "$d/ACCESSIBILITY.txt" "$O/Strings/$loc/"
+    done
+else
+    cp "$WORK/out/Assembly-CSharp.dll" "$TOLK" "$COMPAT" ${ENH:+"$ENH"} "$O/Hearthstone.app/Contents/Resources/Data/Managed/"
+    cp -R "$WORK/hsa/patch/Accessibility/Sounds" "$O/Accessibility/"
+    cp "$WORK/hsa/patch/Accessibility/hsa_manifest.json" "$O/Accessibility/" 2>/dev/null || true
+    for d in "$WORK"/hsa/patch/Strings/*/; do
+        loc=$(basename "$d"); [ -f "$d/ACCESSIBILITY.txt" ] || continue
+        mkdir -p "$O/Strings/$loc" && cp "$d/ACCESSIBILITY.txt" "$O/Strings/$loc/"
+    done
+fi
 cp "$ROOT/loader/libhsaloader.dylib" "$ROOT/voiceover/libHSAVoiceOver.dylib" "$ROOT/voiceover/prism/libprism.dylib" \
    "$ROOT/voiceover/prism/LICENSE-prism-MPL-2.0.txt" "$STAGE/"
 shasum -a 256 "$WORK/vanilla-Assembly-CSharp.dll" | awk '{print $1}' > "$STAGE/built_for.sha256"
-basename "$ZIP" > "$STAGE/built_from.txt"
+if [ "$MODE" = without-hsa ]; then echo "without Hearthstone Access" > "$STAGE/built_from.txt"; else basename "$ZIP" > "$STAGE/built_from.txt"; fi
 # swap in atomically; keep the previous build next to it
 if [ -d "$DEST" ]; then rm -rf "$DEST.previous"; mv "$DEST" "$DEST.previous"; fi
 mv "$STAGE" "$DEST"

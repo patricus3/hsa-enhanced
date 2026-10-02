@@ -39,7 +39,7 @@ switch (args[0])
     case "seeds": Hunks.Seeds(args[1], args[2]); break;
     case "speech": Enhance.RetargetSpeech(args[1], args[2]); break;
     case "expose": Enhance.Expose(args[1], args[2]); break;
-    case "hook": Environment.Exit(Enhance.Hook(args[1], args[2], args[3], args[4], args.Contains("--hsa-menus")) ? 0 : 1); break;
+    case "hook": Environment.Exit(Enhance.Hook(args[1], args[2], args[3], args[4], args.Contains("--hsa-menus"), args.Contains("--without-hsa")) ? 0 : 1); break;
     default: Console.WriteLine("unknown command"); break;
 }
 

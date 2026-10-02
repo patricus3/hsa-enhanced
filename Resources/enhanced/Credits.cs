@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using Accessibility;
 using UnityEngine;
 
 namespace HSAEnhanced
@@ -35,7 +34,7 @@ namespace HSAEnhanced
                 {
                     if (AccessibleCredits.Lines(Display) == null) return;
                     m_screen = new AccessibleCredits(Display);
-                    AccessibilityMgr.SetScreen(m_screen);
+                    Core.Focus.SetScreen(m_screen);
                 }
                 m_screen.Poll();
             }
@@ -44,18 +43,18 @@ namespace HSAEnhanced
 
         void OnDestroy()
         {
-            if (m_screen != null && AccessibilityMgr.IsCurrentlyFocused(m_screen)) AccessibilityMgr.TransitioningScreens();
+            if (m_screen != null) Core.Focus.Pop(m_screen);
         }
     }
 
     // The credits of the year on show, as the screen lays them out: its section headings (the
     // orange ones) make the menu, each opens its roles (the yellow ones) with the names under them;
     // then the year buttons and Back. Each credits card is said as it flies in. All text is the game's.
-    class AccessibleCredits : AccessibleScreen
+    class AccessibleCredits : Core.Screen
     {
         readonly CreditsDisplay m_display;
-        AccessibleMenu m_main;
-        AccessibleMenu m_section;       // open section, or null
+        Core.Menu m_main;
+        Core.Menu m_section;       // open section, or null
         string m_signature;
         Actor m_card;                   // the credits card last said
 
@@ -126,9 +125,9 @@ namespace HSAEnhanced
 
         void Build()
         {
-            var keep = m_main == null ? 0 : MenuEdit.GetIndex(m_main);
+            var keep = m_main == null ? 0 : m_main.Index;
             m_section = null;
-            m_main = new AccessibleMenu(this, YearLabel(), GoBack);
+            m_main = new Core.Menu(this, YearLabel(), GoBack);
             foreach (var s in Sections())
             {
                 var section = s;
@@ -163,7 +162,7 @@ namespace HSAEnhanced
 
         void OpenSection(Section section)
         {
-            m_section = new AccessibleMenu(this, section.Title, () => { m_section = null; m_main.StartReading(false); });
+            m_section = new Core.Menu(this, section.Title, () => { m_section = null; m_main.StartReading(false); });
             foreach (var e in section.Entries) { var text = e; m_section.AddOption(text, () => Output(text)); }
             m_section.StartReading();
         }
@@ -187,20 +186,20 @@ namespace HSAEnhanced
             {
                 m_card = card;
                 var said = CardText();
-                if (said.Length > 0 && AccessibilityMgr.IsCurrentlyFocused(this)) Output(said);
+                if (said.Length > 0 && Focused) Output(said);
             }
             if (Lines(m_display) == null || Signature() == m_signature) return;
             Build();
-            if (AccessibilityMgr.IsCurrentlyFocused(this)) m_main.StartReading();
+            if (Focused) m_main.StartReading();
         }
 
-        void Output(string text) { AccessibilityMgr.Output(this, text); }
+        void Output(string text) { Say(text); }
 
-        public void HandleInput() { if (m_section != null) m_section.HandleAccessibleInput(); else if (m_main != null) m_main.HandleAccessibleInput(); }
+        internal override bool HandleKey() { if (m_section != null) return m_section.HandleKey(); return m_main != null && m_main.HandleKey(); }
 
-        public string GetHelp() { return m_section != null ? m_section.GetHelp() : m_main == null ? "" : m_main.GetHelp(); }
+        internal override string Help() { return m_section != null ? m_section.GetHelp() : m_main == null ? "" : m_main.GetHelp(); }
 
-        public void OnGainedFocus()
+        internal override void Read()
         {
             if (m_section != null) m_section.StartReading();
             else m_main.StartReading();

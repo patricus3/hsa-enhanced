@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Accessibility;
 using Hearthstone.DataModels;
 using UnityEngine;
 
@@ -15,7 +14,7 @@ namespace HSAEnhanced
     // UNTESTED: written without an account that owns a pet.
     static class Pets
     {
-        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<AccessibleMenu, object> s_added = new System.Runtime.CompilerServices.ConditionalWeakTable<AccessibleMenu, object>();
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> s_added = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
 
         internal static string Title { get { return Str.Word("GLUE_COLLECTION_MANAGER_PET_TITLE"); } }
 
@@ -32,7 +31,7 @@ namespace HSAEnhanced
 
         // HSA's Browse Collection menu (Cards, Hero Skins, Card Backs, Coins) and its menu of the deck
         // being edited get Pets
-        internal static void AddTo(AccessibleMenu menu, object collection)
+        internal static void AddTo(object menu, object collection)
         {
             object mark;
             if (s_added.TryGetValue(menu, out mark) || Title.Length == 0) return;
@@ -44,7 +43,10 @@ namespace HSAEnhanced
             if (editDeck && PetsManager.Get().GetTotalPetsOwned() <= 0) return;
             s_added.Add(menu, true);
             var from = menu;
-            menu.AddOption(Title, () => AccessiblePets.Open(from));
+#if !WITHOUT_HSA
+            var hsaMenu = menu as Accessibility.AccessibleMenu;
+            if (hsaMenu != null) hsaMenu.AddOption(Title, () => AccessiblePets.Open(from));
+#endif
         }
 
         internal static CollectionDeck EditedDeck()
@@ -59,7 +61,7 @@ namespace HSAEnhanced
 
         internal static string Checked(bool on)
         {
-            return LocalizationUtils.Get(on ? LocalizationKey.OPTIONS_MENU_CHECKBOX_CHECKED : LocalizationKey.OPTIONS_MENU_CHECKBOX_NOT_CHECKED);
+            return Core.Speech.S(on ? Core.K.OPTIONS_MENU_CHECKBOX_CHECKED : Core.K.OPTIONS_MENU_CHECKBOX_NOT_CHECKED);
         }
 
         internal static string Level(int level) { return Str.Game("GLOBAL_PROGRESSION_TOOLTIP_CLASS_DEFAULT_DESC", level); }
@@ -142,25 +144,25 @@ namespace HSAEnhanced
     // The pets menu over the Collection: the pets, one pet (its details, Favorite Pet, its skins) and
     // one skin (Favorite Skin); Choose sets the pet of the deck being edited. Back goes up a level and
     // from the list back to the HSA menu it was opened from.
-    class AccessiblePets : AccessibleUI
+    class AccessiblePets : Core.Screen
     {
         static AccessiblePets s_open;
 
-        readonly AccessibleMenu m_from;
-        AccessibleMenu m_menu;
+        readonly object m_from;     // the menu it was opened from (read again on close)
+        Core.Menu m_menu;
         Action m_rebuild;       // builds the menu shown now again (after a change the game confirms later)
 
-        AccessiblePets(AccessibleMenu from) { m_from = from; }
+        AccessiblePets(object from) { m_from = from; }
 
-        internal static void Open(AccessibleMenu from)
+        internal static void Open(object from)
         {
-            if (s_open != null) AccessibilityMgr.HideUI(s_open);
+            if (s_open != null) Core.Focus.Pop(s_open);
             s_open = new AccessiblePets(from);
-            AccessibilityMgr.ShowUI(s_open);
+            Core.Focus.Push(s_open);
             s_open.ShowList(0);
         }
 
-        void Show(AccessibleMenu menu, Action rebuild)
+        void Show(Core.Menu menu, Action rebuild)
         {
             m_menu = menu;
             m_rebuild = rebuild;
@@ -169,16 +171,16 @@ namespace HSAEnhanced
 
         void Close()
         {
-            AccessibilityMgr.HideUI(this);
+            Core.Focus.Pop(this);
             if (s_open == this) s_open = null;
-            if (m_from != null) m_from.StartReading();
+            if (m_from != null) Ref.Invoke(m_from, "StartReading", true);
         }
 
         // the change reaches the server; the game's data says it a moment later: the menu is read again
         void RebuildSoon()
         {
-            var at = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
-            FallbackWatcher.Run(RebuildAfter(at));
+            var at = m_menu == null ? 0 : m_menu.Index;
+            Core.Jobs.Run(RebuildAfter(at));
         }
 
         IEnumerator RebuildAfter(int at)
@@ -186,14 +188,14 @@ namespace HSAEnhanced
             yield return new WaitForSecondsRealtime(1f);
             if (s_open != this || m_rebuild == null) yield break;
             m_rebuild();
-            if (m_menu != null) MenuEdit.SetIndex(m_menu, Math.Max(0, Math.Min(at, m_menu.GetNumItems() - 1)));
+            if (m_menu != null) m_menu.SetIndex(Math.Max(0, Math.Min(at, m_menu.GetNumItems() - 1)));
         }
 
         #region The pets
         void ShowList(int at)
         {
             var deck = Pets.EditedDeck();
-            var menu = new AccessibleMenu(this, Pets.Title, Close);
+            var menu = new Core.Menu(this, Pets.Title, Close);
             // the deck's pet slot: Random (no pet of its own) and Favorites Only
             if (deck != null)
             {
@@ -201,13 +203,13 @@ namespace HSAEnhanced
                 menu.AddOption(Str.Join(random, deck.PetID.HasValue ? null : Str.Word("GLUE_BACON_COLLECTION_EQUIPPED_EMOTE")), () =>
                 {
                     Pets.RemoveFromDeck();
-                    ShowList(MenuEdit.GetIndex(m_menu));
+                    ShowList(m_menu.Index);
                 });
                 var only = Str.Word("GLUE_COLLECTION_MANAGER_DECK_CARD_BACK_RANDOM_TOGGLE");
                 menu.AddOption(Str.Join(only, Pets.Checked(deck.RandomPetUseFavorite)), () =>
                 {
                     Pets.SetFavoritesOnly(!deck.RandomPetUseFavorite);
-                    ShowList(MenuEdit.GetIndex(m_menu));
+                    ShowList(m_menu.Index);
                 });
             }
             foreach (var p in Pets.All())
@@ -216,7 +218,7 @@ namespace HSAEnhanced
                 menu.AddOption(PetLabel(pet, deck), () => ShowPet(pet.PetDbiId, 0));
             }
             menu.SetIndex(Math.Max(0, Math.Min(at, menu.GetNumItems() - 1)));
-            Show(menu, () => ShowList(MenuEdit.GetIndex(m_menu)));
+            Show(menu, () => ShowList(m_menu.Index));
         }
 
         static string PetLabel(PetDataModel pet, CollectionDeck deck)
@@ -234,18 +236,18 @@ namespace HSAEnhanced
             var pet = PetUtility.CreatePetDataModel(petId);
             var deck = Pets.EditedDeck();
             bool owned = Pets.Owned(pet);
-            var menu = new AccessibleMenu(this, Str.Clean(pet.DisplayName), () => ShowList(0));
+            var menu = new Core.Menu(this, Str.Clean(pet.DisplayName), () => ShowList(0));
             var ui = this;
             // what the pet's page says
             foreach (var text in new[] { pet.Description, owned ? null : pet.HowToGet })
             {
                 var t = Str.Clean(text);
-                if (t.Length > 0) menu.AddOption(t, () => AccessibilityMgr.Output(ui, t));
+                if (t.Length > 0) menu.AddOption(t, () => ui.Say(t));
             }
             if (owned)
             {
                 var level = Pets.Level(pet.CurrentLevel);
-                if (!string.IsNullOrEmpty(level)) menu.AddOption(level, () => AccessibilityMgr.Output(ui, level));
+                if (!string.IsNullOrEmpty(level)) menu.AddOption(level, () => ui.Say(level));
                 // the Favorite Pet button
                 menu.AddOption(Str.Join(Str.Word("GLUE_PETPREVIEW_FAVORITE_PET"), Pets.Checked(pet.IsFavorite)), () =>
                 {
@@ -258,7 +260,7 @@ namespace HSAEnhanced
                     menu.AddOption(Str.Join(Str.Word("GLUE_CHOOSE"), deck.PetID == petId && !deck.PetVariantID.HasValue ? Str.Word("GLUE_BACON_COLLECTION_EQUIPPED_EMOTE") : null), () =>
                     {
                         Pets.UseInDeck(petId, null);
-                        ShowPet(petId, MenuEdit.GetIndex(m_menu));
+                        ShowPet(petId, m_menu.Index);
                     });
             }
             // its skins, one per level
@@ -270,7 +272,7 @@ namespace HSAEnhanced
                     menu.AddOption(SkinLabel(level, deck), () => ShowSkin(petId, level.PetSkin.PetVariantDbiId, 0));
                 }
             menu.SetIndex(Math.Max(0, Math.Min(at, menu.GetNumItems() - 1)));
-            Show(menu, () => ShowPet(petId, MenuEdit.GetIndex(m_menu)));
+            Show(menu, () => ShowPet(petId, m_menu.Index));
         }
 
         static string SkinLabel(PetLevelDataModel level, CollectionDeck deck)
@@ -291,12 +293,12 @@ namespace HSAEnhanced
         {
             var skin = PetUtility.CreatePetSkinDataModel(variantId);
             var deck = Pets.EditedDeck();
-            var menu = new AccessibleMenu(this, Str.Clean(skin.DisplayName), () => ShowPet(petId, 0));
+            var menu = new Core.Menu(this, Str.Clean(skin.DisplayName), () => ShowPet(petId, 0));
             var ui = this;
             foreach (var text in new[] { skin.CollectionDescription, skin.Owned ? null : skin.PreviewDescription })
             {
                 var t = Str.Clean(text);
-                if (t.Length > 0) menu.AddOption(t, () => AccessibilityMgr.Output(ui, t));
+                if (t.Length > 0) menu.AddOption(t, () => ui.Say(t));
             }
             if (skin.Owned)
             {
@@ -305,7 +307,7 @@ namespace HSAEnhanced
                 {
                     if (skin.IsFavorite && !PetsManager.Get().CanUnfavoritePetVariant(variantId, false))
                     {
-                        AccessibilityMgr.Output(ui, Str.Unavailable);
+                        ui.Say(Str.Unavailable);
                         return;
                     }
                     Log.Info("pets: favorite skin " + variantId + " " + !skin.IsFavorite);
@@ -316,17 +318,19 @@ namespace HSAEnhanced
                     menu.AddOption(Str.Join(Str.Word("GLUE_CHOOSE"), deck.PetVariantID == variantId ? Str.Word("GLUE_BACON_COLLECTION_EQUIPPED_EMOTE") : null), () =>
                     {
                         Pets.UseInDeck(petId, variantId);
-                        ShowSkin(petId, variantId, MenuEdit.GetIndex(m_menu));
+                        ShowSkin(petId, variantId, m_menu.Index);
                     });
             }
-            else menu.AddOption(Str.Word("GLUE_PETPREVIEW_UNLOCKMETHOD_LEVEL"), () => AccessibilityMgr.Output(ui, Str.Word("GLUE_PETPREVIEW_UNLOCKMETHOD_LEVEL")));
+            else menu.AddOption(Str.Word("GLUE_PETPREVIEW_UNLOCKMETHOD_LEVEL"), () => ui.Say(Str.Word("GLUE_PETPREVIEW_UNLOCKMETHOD_LEVEL")));
             menu.SetIndex(Math.Max(0, Math.Min(at, menu.GetNumItems() - 1)));
-            Show(menu, () => ShowSkin(petId, variantId, MenuEdit.GetIndex(m_menu)));
+            Show(menu, () => ShowSkin(petId, variantId, m_menu.Index));
         }
         #endregion
 
-        public void HandleAccessibleInput() { if (m_menu != null) m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
 
-        public string GetAccessibleHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.GetHelp(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }

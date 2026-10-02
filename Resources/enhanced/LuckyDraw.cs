@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Accessibility;
 using Hearthstone.DataModels;
 using Hearthstone.UI;
 using UnityEngine;
@@ -31,7 +30,7 @@ namespace HSAEnhanced
                     var widget = Ref.Get<LuckyDrawWidget>(Display, "m_luckyDrawWidget");
                     if (widget == null || !widget.isActiveAndEnabled || AccessibleLuckyDraw.Model(widget) == null) return;
                     m_screen = new AccessibleLuckyDraw(widget);
-                    AccessibilityMgr.SetScreen(m_screen);
+                    Core.Focus.SetScreen(m_screen);
                 }
                 m_screen.Poll();
             }
@@ -40,15 +39,15 @@ namespace HSAEnhanced
 
         void OnDestroy()
         {
-            if (m_screen != null && AccessibilityMgr.IsCurrentlyFocused(m_screen)) AccessibilityMgr.TransitioningScreens();
+            if (m_screen != null) Core.Focus.Pop(m_screen);
         }
     }
 
     // The draw from its data model: what it is, time left, the draw with its price, the rewards
-    class AccessibleLuckyDraw : AccessibleScreen
+    class AccessibleLuckyDraw : Core.Screen
     {
         readonly LuckyDrawWidget m_widget;
-        AccessibleMenu m_menu;
+        Core.Menu m_menu;
         string m_signature;
 
         internal AccessibleLuckyDraw(LuckyDrawWidget widget) { m_widget = widget; Build(); }
@@ -61,15 +60,15 @@ namespace HSAEnhanced
 
         void Build()
         {
-            var keep = m_menu == null ? 0 : MenuEdit.GetIndex(m_menu);
+            var keep = m_menu == null ? 0 : m_menu.Index;
             var dm = Model(m_widget);
-            m_menu = MenuEdit.Carry(m_menu, new AccessibleMenu(this, dm == null ? "" : Str.Clean(dm.Name), Close));
+            m_menu = new Core.Menu(this, dm == null ? "" : Str.Clean(dm.Name), Close);
             if (dm != null)
             {
                 if (dm.IsClosed) m_menu.AddOption(Str.Clean(dm.ClosedReason), () => Output(Str.Clean(dm.ClosedReason)));
                 else if (!dm.IsAllRewardsOwned)
                     m_menu.AddOption(() => Str.Join(Str.Word("GLUE_LUCKY_DRAW_LEGAL_POPUP_PULL"), Str.Game("GLUE_LUCKY_DRAW_REQUIRED_AMOUNT_SINGLE", PriceText(dm)) ?? PriceText(dm)), Draw);
-                AccessibleMenu.GetTextDelegate owned = () =>
+                Func<string> owned = () =>
                 {
                     var m = Model(m_widget);
                     return m == null ? "" : Str.Join(Str.Word("GLUE_LUCKY_COLLECTED"), m.OwnedRewardCount + "/" + (m.Rewards == null ? 0 : m.Rewards.Count));
@@ -77,7 +76,7 @@ namespace HSAEnhanced
                 m_menu.AddOption(owned, () => Output(owned()));
                 if (!string.IsNullOrEmpty(Str.Clean(dm.TimeLeft)))
                 {
-                    AccessibleMenu.GetTextDelegate time = () => { var m = Model(m_widget); return m == null ? "" : Str.Clean(m.TimeLeft); };
+                    Func<string> time = () => { var m = Model(m_widget); return m == null ? "" : Str.Clean(m.TimeLeft); };
                     m_menu.AddOption(time, () => Output(time()));
                 }
                 if (dm.Rewards != null)
@@ -104,7 +103,9 @@ namespace HSAEnhanced
                 {
                     if (price == null) continue;
                     var s = "";
-                    try { s = AccessibleShopUtils.GetBuyText(price); } catch { }
+#if !WITHOUT_HSA
+                    try { s = Accessibility.AccessibleShopUtils.GetBuyText(price); } catch { }
+#endif
                     if (!string.IsNullOrEmpty(s)) return s;
                     if (!string.IsNullOrEmpty(price.DisplayText)) return Str.Clean(price.DisplayText) + " " + price.Currency;
                 }
@@ -139,13 +140,13 @@ namespace HSAEnhanced
             Build();
         }
 
-        void Output(string text) { AccessibilityMgr.Output(this, text); }
+        void Output(string text) { Say(text); }
 
-        public void HandleInput() { if (m_menu != null) m_menu.HandleAccessibleInput(); }
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
 
-        public string GetHelp() { return m_menu == null ? "" : m_menu.GetHelp(); }
+        internal override string Help() { return m_menu == null ? "" : m_menu.GetHelp(); }
 
-        public void OnGainedFocus()
+        internal override void Read()
         {
             Build();
             m_menu.StartReading();

@@ -28,13 +28,19 @@ try {
     $menus = if ($args -contains '--use-hsa-menus') { 'hsa' } else { 'enhanced' }
     Set-Content (Join-Path $Data 'menus.txt') $menus
     Log "menus: $menus"
+    # --without-hsa: our own core only (no Hearthstone Access download; most screens are not ours yet)
+    $standalone = $args -contains '--without-hsa'
+    Set-Content (Join-Path $Data 'mode.txt') $(if ($standalone) { 'without-hsa' } else { 'hsa' })
+    Log "mode: $(if ($standalone) { 'without Hearthstone Access' } else { 'with Hearthstone Access' })"
 
     Say 'Checking tools'
     Use-Dotnet
 
-    Say 'Downloading Hearthstone Access from hearthstoneaccess.com and its source diff from GitHub'
-    Update-Hsa | Out-Null
     $dl = Join-Path $Data 'downloads'
+    if (-not $standalone) {
+        Say 'Downloading Hearthstone Access from hearthstoneaccess.com and its source diff from GitHub'
+        Update-Hsa | Out-Null
+    }
 
     Say 'Building the mod for your game version (about a minute)'
     & (Join-Path $Src 'windows\rebuild.ps1') -Zip "$dl\hsa.zip"

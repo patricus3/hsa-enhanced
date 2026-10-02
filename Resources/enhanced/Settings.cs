@@ -1,5 +1,5 @@
 using System;
-using Accessibility;
+using HSAEnhanced.Core;
 using UnityEngine;
 
 namespace HSAEnhanced
@@ -23,7 +23,7 @@ namespace HSAEnhanced
         // start of HSA's AccessibleGameplay.HandleEndTurnInput(); true: E ended the turn here
         internal static bool EndTurnWithoutAsking(object gameplay)
         {
-            if (ConfirmEndTurn || !GameState.Get().IsInMainOptionMode() || !AccessibleKey.END_TURN.IsPressed()) return false;
+            if (ConfirmEndTurn || !GameState.Get().IsInMainOptionMode() || !Bind.END_TURN.Pressed) return false;
             Log.Info("end turn without asking (setting)");
             Ref.Invoke(gameplay, "EndTurn");
             return true;

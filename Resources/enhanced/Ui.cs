@@ -4,76 +4,11 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using Accessibility;
 using Hearthstone.UI;
 using UnityEngine;
 
 namespace HSAEnhanced
 {
-    static class Str
-    {
-        // Every word the mod says comes from the game's own string tables (the game's and
-        // Hearthstone Access's), so it is in the player's language; the mod has no texts of its own.
-
-        // A game string, or null when the table lacks it
-        internal static string Game(string key, params object[] args)
-        {
-            try
-            {
-                if (!GameStrings.HasKey(key)) return null;
-                return Clean(args.Length == 0 ? GameStrings.Get(key) : GameStrings.Format(key, args));
-            }
-            catch (Exception e) { Log.Error(e); return null; }
-        }
-
-        // The first of these game strings the tables have, or ""
-        internal static string Word(params string[] keys)
-        {
-            foreach (var k in keys) { var s = Game(k); if (!string.IsNullOrEmpty(s)) return s; }
-            return "";
-        }
-
-        // words for states, from the game's tables
-        internal static string Locked { get { return Word("GLUE_ADVENTURE_LOCKED", "ACCESSIBILITY_SCREEN_MISSION_LOCKED"); } }
-        internal static string Unavailable { get { return Word("GLOBAL_NOT_AVAILABLE"); } }
-        internal static string NotOwned { get { return Word("GLUE_COLLECTION_DECK_HELPER_REPLACE_UNOWNED_CARD"); } }
-        internal static string Completed { get { return Word("ACCESSIBILITY_SCREEN_MISSION_COMPLETED"); } }
-        internal static string Back { get { return Word("GLOBAL_BACK"); } }
-
-        static readonly Regex Placeholder = new Regex(@"<PH>\s*");
-
-        // Spoken form of on-screen text: markup and the "<PH>" placeholder marker removed
-        static readonly System.Text.RegularExpressions.Regex GameKey = new System.Text.RegularExpressions.Regex("^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$");
-
-        internal static string Clean(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-            // a text that is still the game's string key (the game looks it up when it draws it): its
-            // text, and nothing when the game has none (then it shows nothing either)
-            var key = text.Trim();
-            if (GameKey.IsMatch(key))
-            {
-                if (!GameStrings.HasKey(key)) return "";
-                text = GameStrings.Get(key);
-            }
-            text = Placeholder.Replace(text, "");
-            text = AccessibilityUtils.CurateText(text);
-            return text.TrimEnd('.', ':', ' ');
-        }
-
-        internal static string Join(params string[] parts)
-        {
-            var sb = new StringBuilder();
-            foreach (var p in parts)
-            {
-                if (string.IsNullOrEmpty(p)) continue;
-                if (sb.Length > 0) sb.Append(", ");
-                sb.Append(p);
-            }
-            return sb.ToString();
-        }
-    }
-
     // A button the game shows, found by walking the game's own objects rather than a list
     class GameButton
     {
@@ -371,8 +306,8 @@ namespace HSAEnhanced
                 peg = get != null ? get.Invoke(clickable, null) as PegUIElement : Ref.Get<PegUIElement>(clickable, "m_pegUiElement");
             }
             catch (Exception e) { Log.Error(e); }
-            if (peg != null && peg) { Log.Info("press (widget) " + clickable.name); AccessibleWidgetUtils.ClickButton(peg); }
-            else { Log.Info("press (mouse) " + clickable.name); AccessibleInputMgr.Click(clickable); }
+            if (peg != null && peg) { Log.Info("press (widget) " + clickable.name); Core.Click.Peg(peg); }
+            else { Log.Info("press (mouse) " + clickable.name); Core.Click.Mouse(clickable); }
         }
 
         // Buttons that show no text of their own, named with the game's own words for them
@@ -419,16 +354,16 @@ namespace HSAEnhanced
                 return () => handle.Invoke(c, new object[] { ev });
             }
             var peg = c as PegUIElement;
-            if (peg != null) return () => AccessibleWidgetUtils.ClickButton(peg);
+            if (peg != null) return () => Core.Click.Peg(peg);
             var widget = c as Widget;
             if (widget != null)
             {
                 // a widget holding a single clickable: press that one
                 var inner = widget.GetComponentsInChildren<Clickable>(false);
                 if (inner.Length == 1) return () => Press(inner[0]);
-                return () => AccessibleWidgetUtils.TriggerButtonClicked(widget);
+                return () => Core.Click.WidgetClicked(widget);
             }
-            return () => AccessibleInputMgr.Click(c);
+            return () => Core.Click.Mouse(c);
         }
 
         // The values of `owner`'s fields that are a T (a live object), found by type, not by name
@@ -638,7 +573,7 @@ namespace HSAEnhanced
             // a page-sized click area that happens to show the chapter's title
             foreach (var mb in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
             {
-                if (!(mb is AccessibleScreen) || !mb.isActiveAndEnabled) continue;
+                if (!Screens.IsScreen(mb) || !mb.isActiveAndEnabled) continue;
                 foreach (var b in ButtonsIn(mb, new string[0], v => false))
                     if (objects.Add(b.Object) && !Labels.SimilarToAny(labels, b.Label)) { labels.Add(b.Label); found.Add(b); }
             }
@@ -775,98 +710,39 @@ namespace HSAEnhanced
         }
     }
 
-    // Reaches into AccessibleMenu's option list (private in HSA) to insert and remove options
-    static class MenuEdit
+    // the game's screen objects a screen reader is attached to (Hearthstone Access's screens)
+    static class Screens
     {
-        static readonly FieldInfo Options = Ref.Field(typeof(AccessibleMenu), "m_options");
-        static readonly FieldInfo Index = Ref.Field(typeof(AccessibleMenu), "m_curOptionIdx");
-
-        internal static IList List(AccessibleMenu menu) { return Options == null ? null : Options.GetValue(menu) as IList; }
-
-        internal static string TextOf(object option)
+        internal static bool IsScreen(object o)
         {
-            var text = Ref.Get(option, "m_text") as string;
-            if (text != null) return text;
-            var get = Ref.Get(option, "m_getText") as AccessibleMenu.GetTextDelegate;
-            try { return get == null ? "" : get(); } catch { return ""; }
+#if WITHOUT_HSA
+            return false;
+#else
+            return o is Accessibility.AccessibleScreen;
+#endif
         }
+    }
 
-        // Adds options at `position` (end when negative); returns the option objects added
-        internal static List<object> Insert(AccessibleMenu menu, int position, IList<GameButton> buttons)
+    // the game's own name for a screen (its button's headline)
+    static class SceneNames
+    {
+        internal static string Of(SceneMgr.Mode mode)
         {
-            var list = List(menu);
-            var added = new List<object>();
-            if (list == null) return added;
-            foreach (var b in buttons)
+            switch (mode)
             {
-                var button = b;
-                menu.AddOption(button.Label, () => { try { Log.Info("option: " + button.Label + " (" + Ui.StateText(button.Target) + ")"); button.Click(); } catch (Exception e) { Log.Error(e); } });
-                added.Add(list[list.Count - 1]);
+                case SceneMgr.Mode.HUB: return Str.Word("ACCESSIBILITY_HUB_MAIN_MENU_TITLE");
+                case SceneMgr.Mode.TOURNAMENT: return Str.Word("GLUE_TOURNAMENT", "GLOBAL_PLAY");
+                case SceneMgr.Mode.COLLECTIONMANAGER: return Str.Word("GLUE_MY_COLLECTION");
+                case SceneMgr.Mode.PACKOPENING: return Str.Word("GLUE_OPEN_PACKS");
+                case SceneMgr.Mode.ADVENTURE: return Str.Word("GLUE_ADVENTURE");
+                case SceneMgr.Mode.TAVERN_BRAWL: return Str.Word("GLOBAL_TAVERN_BRAWL", "GLUE_TOOLTIP_BUTTON_TAVERN_BRAWL_HEADLINE");
+                case SceneMgr.Mode.BACON: return Str.Word("GLUE_BACON");
+                case SceneMgr.Mode.LETTUCE_VILLAGE: return Str.Word("GLUE_MERCENARIES");
+                case SceneMgr.Mode.GAME_MODE: return Str.Word("GLUE_TOOLTIP_BUTTON_GAME_MODES_HEADLINE");
+                case SceneMgr.Mode.DRAFT: return Str.Word("GLOBAL_ARENA");
+                case SceneMgr.Mode.CREDITS: return Str.Word("GLOBAL_CREDITS", "GLUE_CREDITS");
+                default: return "";
             }
-            if (position >= 0 && position < list.Count - added.Count)
-            {
-                foreach (var o in added) list.Remove(o);
-                for (int i = 0; i < added.Count; i++) list.Insert(position + i, added[i]);
-            }
-            return added;
-        }
-
-        internal static void Remove(AccessibleMenu menu, IEnumerable<object> options)
-        {
-            var list = List(menu);
-            if (list == null) return;
-            foreach (var o in options) list.Remove(o);
-            ClampIndex(menu);
-        }
-
-        // names of the methods an option runs (its delegate fields)
-        internal static HashSet<string> ActionNames(object option)
-        {
-            var names = new HashSet<string>();
-            for (var t = option.GetType(); t != null && t != typeof(object); t = t.BaseType)
-                foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
-                {
-                    if (!typeof(Delegate).IsAssignableFrom(f.FieldType)) continue;
-                    Delegate d;
-                    try { d = f.GetValue(option) as Delegate; } catch { continue; }
-                    if (d == null) continue;
-                    foreach (var one in d.GetInvocationList()) if (one.Method != null) names.Add(one.Method.Name);
-                }
-            return names;
-        }
-
-        // A menu built again in place of `old`: it keeps taking Enter. HSA's menu acts on Enter only
-        // once it has started reading, and a rebuilt menu is not read again
-        internal static AccessibleMenu Carry(AccessibleMenu old, AccessibleMenu fresh)
-        {
-            if (old != null && Ref.Get<bool>(old, "m_isReading")) Ref.Set(fresh, "m_isReading", true);
-            return fresh;
-        }
-
-        internal static void ClampIndex(AccessibleMenu menu)
-        {
-            var list = List(menu);
-            if (list == null || Index == null) return;
-            var i = (int)Index.GetValue(menu);
-            if (i >= list.Count) Index.SetValue(menu, Math.Max(0, list.Count - 1));
-        }
-
-        internal static int GetIndex(AccessibleMenu menu) { return Index == null ? 0 : (int)Index.GetValue(menu); }
-
-        internal static void SetIndex(AccessibleMenu menu, int index) { if (Index != null) Index.SetValue(menu, index); }
-
-        static readonly FieldInfo BackAction = Ref.Field(typeof(AccessibleMenu), "m_goBackAction");
-
-        internal static Action GetBack(AccessibleMenu menu) { return BackAction == null ? null : BackAction.GetValue(menu) as Action; }
-
-        internal static void SetBack(AccessibleMenu menu, Action back) { if (BackAction != null) BackAction.SetValue(menu, back); }
-
-        internal static int IndexOfText(AccessibleMenu menu, string text)
-        {
-            var list = List(menu);
-            if (list == null || string.IsNullOrEmpty(text)) return -1;
-            for (int i = 0; i < list.Count; i++) if (TextOf(list[i]) == text) return i;
-            return -1;
         }
     }
 }

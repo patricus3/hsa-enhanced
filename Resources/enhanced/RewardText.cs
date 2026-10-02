@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using HSAEnhanced.Core;
+#if !WITHOUT_HSA
 using Accessibility;
+#endif
 using Hearthstone.DataModels;
 
 namespace HSAEnhanced
@@ -45,14 +48,7 @@ namespace HSAEnhanced
                     {
                         lines.Add(Str.Clean(merc.m_mercName));
                         var ability = merc.GetLettuceAbility(unlock.AbilityId);
-                        if (ability != null)
-                        {
-                            var model = new LettuceAbilityDataModel();
-                            CollectionUtils.PopulateAbilityDataModel(model, ability, merc);
-                            var parts = new List<string>();
-                            Mail.Collect(model, parts, 2);
-                            lines.Add(Str.Join(parts.ToArray()));
-                        }
+                        if (ability != null) lines.Add(Ability(ability));
                     }
                     lines.Add(Str.Word("GLUE_LETTUCE_ABILITY_UNLOCK_FOOTER"));
                     return Clean(lines);
@@ -122,7 +118,7 @@ namespace HSAEnhanced
                 if (v is int && merc != null && (n.EndsWith("AbilityId") || n.EndsWith("EquipmentId")))
                 {
                     var ability = merc.GetLettuceAbility((int)v);
-                    if (ability != null) { var m = new LettuceAbilityDataModel(); CollectionUtils.PopulateAbilityDataModel(m, ability, merc); var parts = new List<string>(); Mail.Collect(m, parts, 2); lines.Add(Str.Join(parts.ToArray())); }
+                    if (ability != null) lines.Add(Ability(ability));
                 }
                 else if (v is string && (n == "CardID" || n == "CardId"))
                 {
@@ -136,6 +132,23 @@ namespace HSAEnhanced
                         if (item is RewardData) lines.AddRange(Describe((RewardData)item));
             }
             return lines;
+        }
+
+        // an ability as its card shows it: its name and its current tier's text (not every field of its
+        // data: card ids, every tier's cost, an unfilled name template)
+        static string Ability(LettuceAbility a)
+        {
+            var name = Str.Clean(a.GetCardName());
+            if (name.Length == 0) name = Str.Clean(a.m_abilityName);
+            string text = null;
+            try
+            {
+                var id = a.GetCardId();
+                var def = string.IsNullOrEmpty(id) ? null : DefLoader.Get().GetEntityDef(id);
+                text = def == null ? null : def.GetCardTextInHand();
+            }
+            catch { }
+            return Str.Join(name, Str.Clean(text));
         }
 
         static List<string> Clean(List<string> lines)

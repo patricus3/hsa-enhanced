@@ -29,6 +29,7 @@ namespace HSAPrism
             public uint availability_debounce_samples;
             public uint availability_backoff_max_ms;
             public byte availability_auto_power_manage;
+            public IntPtr availability_baseline_callback;
         }
 
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] static extern PrismConfig prism_config_init();

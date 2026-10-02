@@ -40,7 +40,8 @@ while true; do
     game=$(pgrep -x Hearthstone)
     now=$(date +%s)
     # a new Hearthstone Access release: look once a day
-    if [ $((now - last_hsa_check)) -ge 86400 ] && [ -x "$UPDATE" ]; then
+    # (not when installed --without-hsa)
+    if [ $((now - last_hsa_check)) -ge 86400 ] && [ -x "$UPDATE" ] && [ "$(cat "$HOME/Library/Application Support/HearthstoneAccess/mode" 2>/dev/null)" != without-hsa ]; then
         last_hsa_check=$now
         "$UPDATE" >> "$LOG" 2>&1 && log "new Hearthstone Access release downloaded"
     fi
