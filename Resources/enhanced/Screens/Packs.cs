@@ -7,12 +7,16 @@ using UnityEngine;
 
 namespace HSAEnhanced
 {
-    // Opening packs (Open Packs on the main menu), from the game's own pack objects:
-    //   the packs you have, each with its count (locked ones say why); Enter opens one the way the
-    //     game's own quick-open does (Space); "open several" opens as many as the game allows at once
-    //   an opened pack: its five cards in order, each said once it is turned (name, rarity, golden /
-    //     diamond / signature, new); Enter turns it as a click does; Reveal all; Done
-    //   several packs at once: the game's Reveal all, Continue and Done steps, and the summary counts
+    // Opening packs, as Hearthstone Access players know it (its behaviour, our code). Everything is a
+    // list: Left / Right (Tab, Home / End) go through it, Up / Down through an item's lines.
+    //   the packs: "3 card packs, 2 of 5", then (Down) why it is locked, its name; Enter opens one,
+    //     Space asks how many to open at once (2 to as many as the game allows); Backspace leaves
+    //   an opened pack: "1 card, 1 of 5" until turned; Enter turns the card, Space a random one; each
+    //     card's name is said as it turns; its lines: name (edition), class, cost, runes, stats, text,
+    //     tribe, type, rarity, new. When all are turned: "Press Enter to continue", Enter is Done
+    //   several packs: the packs-opened count and Highlights, then each page of cards as above (Space
+    //     turns the whole page; Enter continues once all are turned); the summary by rarity (Down: the
+    //     classes or the legendaries), Enter is Done
     static class Packs
     {
         static PacksUI s_ui;
@@ -47,13 +51,23 @@ namespace HSAEnhanced
     class PacksUI : Core.Screen
     {
         internal readonly PackOpening Screen;
-        Menu m_menu;
-        string m_key, m_signature;
-        float m_next;
-        // an opened pack, read as cards are in a match (no menu then)
-        List<PackOpeningCard> m_cards;
-        PackOpeningDirector m_director;
+
+        // one item of a list: its lines, and the card behind it (for turning it)
+        class Item
+        {
+            internal Func<List<string>> Lines;
+            internal PackOpeningCard Card;
+            internal UnopenedPack Pack;
+        }
+
+        string m_view;              // list, pack, highlights, summary
+        string m_key;
+        List<Item> m_items = new List<Item>();
         int m_at, m_line;
+        float m_next;
+        int m_listTypes = -1;
+        bool m_saidContinue, m_firstHighlights = true;
+        readonly HashSet<PackOpeningCard> m_turned = new HashSet<PackOpeningCard>();
 
         internal PacksUI(PackOpening screen) { Screen = screen; }
 
@@ -63,109 +77,116 @@ namespace HSAEnhanced
 
         bool Busy { get { return Screen.m_InputBlocker != null && Screen.m_InputBlocker.activeSelf; } }
 
+        static string A(string key, params object[] args) { return Speech.S("ACCESSIBILITY_" + key, args); }
+
+        // ---- what is on screen ------------------------------------------------------------------
+
         internal bool Refresh(bool now)
         {
-            if (!now && Time.unscaledTime < m_next) return m_menu != null;
-            m_next = Time.unscaledTime + 0.4f;
-            string key, title; var items = new List<GameButton>();
-            var before = m_cards;
-            m_cards = null;
-            if (!Build(out key, out title, items)) { m_cards = before; return m_menu != null || m_cards != null; }
-            if (m_cards != null)
+            if (!now && Time.unscaledTime < m_next) return m_view != null;
+            m_next = Time.unscaledTime + 0.25f;
+            var director = Director;
+            string view, key, intro = null;
+            List<Item> items;
+            if (director != null && director.IsMassPackOpening()) { if (!Mass(director, out view, out key, out intro, out items)) return m_view != null; }
+            else
             {
-                m_menu = null;
-                if (m_at >= m_cards.Count) { m_at = Math.Max(0, m_cards.Count - 1); m_line = 0; }
-                if (key != m_key)
+                var cards = HiddenCards(director);
+                if (director != null && (director.IsPlaying() || director.IsDoneButtonShown) && cards != null && cards.Count > 0) { view = "pack"; items = CardItems(cards); key = "pack|" + cards[0].GetInstanceID(); }
+                else if (Busy) return m_view != null;     // an opening under way: the cards come next
+                else { view = "list"; items = PackItems(); key = "list|" + items.Count; }
+            }
+            bool newKey = key != m_key;
+            var before = m_view;
+            m_view = view; m_items = items;
+            if (m_at >= m_items.Count) { m_at = Math.Max(0, m_items.Count - 1); m_line = 0; }
+
+            if (view == "list")
+            {
+                if (m_items.Count == 0) { if (newKey) { m_key = key; Log.Info("packs: none left"); Navigation.GoBack(); } return true; }
+                if (newKey)
                 {
-                    m_key = key; m_signature = null; m_at = 0; m_line = 0;
-                    Log.Info("packs: " + key + " " + m_cards.Count + " cards");
-                    if (Focused) Say(Str.Join(title, First()), true);
+                    m_key = key;
+                    // back from opening a pack, the same packs: the one in focus again, with its count
+                    bool same = before != null && before != "list" && m_listTypes == m_items.Count;
+                    m_listTypes = m_items.Count;
+                    if (!same) { m_at = 0; m_line = 0; }
+                    Log.Info("packs: list, " + m_items.Count + " kinds");
+                    if (Focused) Say(same ? First() : Str.Join(Str.Word("GLUE_OPEN_PACKS"), First()), true);
                 }
                 return true;
             }
-            var sig = key + "\n" + title + "\n" + string.Join("\n", items.ConvertAll(b => b.Label).ToArray());
-            bool newStep = key != m_key;
-            if (!newStep && sig == m_signature) return true;
-            var at = m_menu == null || newStep ? 0 : m_menu.Index;
-            var menu = new Menu(this, title, Back);
-            foreach (var b in items) { var click = b.Click; menu.AddOption(b.Label, () => click()); }
-            menu.Index = at;
-            m_menu = menu;
-            m_signature = sig;
-            m_key = key;
-            if (newStep)
+            if (newKey)
             {
-                Log.Info("packs: " + key + " '" + title + "': " + GameButton.Describe(items));
-                if (Focused) m_menu.StartReading();
+                m_key = key; m_at = 0; m_line = 0; m_saidContinue = false;
+                m_turned.Clear();
+                foreach (var it in m_items) if (it.Card != null && it.Card && it.Card.IsRevealed()) m_turned.Add(it.Card);
+                Log.Info("packs: " + key);
+                if (Focused) Say(Str.Join(intro, First()), true);
+            }
+            // a card turned (any way): its name; all turned: the way on
+            foreach (var it in m_items)
+            {
+                var c = it.Card;
+                if (c == null || !c || !c.IsRevealed() || m_turned.Contains(c)) continue;
+                m_turned.Add(c);
+                var lines = it.Lines();
+                if (lines.Count > 0 && Focused) Say(lines[0]);
+            }
+            if (!m_saidContinue && ContinueShown(director))
+            {
+                m_saidContinue = true;
+                if (Focused) Say(A("PRESS_KEY_TO_CONTINUE", Keys.Enter.Name));
             }
             return true;
         }
 
-        bool Build(out string key, out string title, List<GameButton> items)
+        bool ContinueShown(PackOpeningDirector director)
         {
-            key = null; title = "";
-            var director = Director;
-            if (director != null && director.IsMassPackOpening()) return Mass(director, ref key, ref title, items);
-            var cards = Cards(director);
-            if (director != null && (director.IsPlaying() || director.IsDoneButtonShown) && cards != null && cards.Count > 0)
-                return Opened(director, cards, ref key, ref title, items);
-            if (Busy) return false;     // an opening under way: the cards come next
-            return List(ref key, ref title, items);
+            if (director == null) return false;
+            if (m_view == "pack") return director.IsDoneButtonShown;
+            if (m_view == "highlights") return director.IsMassPackOpeningHighlightsContinueButtonShowing();
+            return false;
         }
 
-        // ---- the packs you have -----------------------------------------------------------------
+        // ---- the packs ---------------------------------------------------------------------------
 
-        bool List(ref string key, ref string title, List<GameButton> items)
+        List<Item> PackItems()
         {
-            key = "list";
-            title = Str.Word("GLUE_PACK_OPENING_HEADER");
+            var items = new List<Item>();
             var packs = new List<UnopenedPack>();
             foreach (var p in UnityEngine.Object.FindObjectsByType<UnopenedPack>(FindObjectsSortMode.None))
-                if (p != null && p.GetCreatorPack() == null && p.GetCount() > 0) packs.Add(p);
-            var order = GameUtils.GetSortedPackIds(false);
-            packs.Sort((a, b) => Order(order, a.GetBoosterId()).CompareTo(Order(order, b.GetBoosterId())));
+                if (p != null && p.gameObject.activeInHierarchy && p.GetCreatorPack() == null && p.GetCount() > 0) packs.Add(p);
+            // as the tray shows them, left to right
+            var shown = packs.ConvertAll(p => new GameButton { Target = p });
+            Ui.SortByScreen(shown);
             var seen = new HashSet<int>();
-            foreach (var pack in packs)
+            foreach (var b in shown)
             {
-                var id = pack.GetBoosterId();
-                if (!seen.Add(id)) continue;
-                var name = PackName(id);
-                string why;
-                bool can = pack.CanOpenPack(out why);
-                var label = Str.Join(name, pack.GetCount().ToString(), can ? null : Str.Clean(why));
+                var pack = (UnopenedPack)b.Target;
+                if (!seen.Add(pack.GetBoosterId())) continue;
                 var p = pack;
-                items.Add(new GameButton { Target = pack, Label = label, Click = () =>
+                items.Add(new Item
                 {
-                    string reason;
-                    if (!p.CanOpenPack(out reason)) { Speech.Say(Str.Clean(reason)); return; }
-                    Log.Info("packs: open " + name);
-                    Ref.Set(Screen, "m_lastOpenedBoosterId", id);
-                    Ref.Call(Screen, "AutomaticallyOpenPack");
-                } });
-                // several at once, as many as the game allows for this pack
-                int limit = 0;
-                try { limit = Screen.MassPackOpeningEnabled() ? Math.Min(Screen.MassPackOpeningPackLimit(id), pack.GetCount()) : 0; } catch { }
-                if (can && limit >= 2)
-                {
-                    int n = limit;
-                    var many = Str.Join(Str.Word("GLUE_PACK_OPENING_HEADER"), name, n.ToString());
-                    items.Add(new GameButton { Target = pack, Label = many, Click = () =>
+                    Pack = pack,
+                    Lines = () =>
                     {
-                        Log.Info("packs: open " + n + " of " + name);
-                        Ref.Invoke(Screen, "OpenBooster", p, n);
-                    } });
-                }
+                        string why;
+                        var lines = new List<string> { A("UI_REWARD_N_CARD_PACKS", p.GetCount()) };
+                        if (!p.CanOpenPack(out why)) lines.Add(Str.Clean(why));
+                        lines.Add(PackName(p.GetBoosterId()));
+                        lines.RemoveAll(l => string.IsNullOrEmpty(l));
+                        return lines;
+                    },
+                });
             }
-            if (items.Count == 0) return true;
-            return true;
+            return items;
         }
-
-        static int Order(List<int> order, int id) { var i = order == null ? -1 : order.IndexOf(id); return i < 0 ? 1 << 30 : i; }
 
         static string PackName(int id)
         {
             var record = GameDbf.Booster.GetRecord(id);
-            if (record == null) return id.ToString();
+            if (record == null) return null;
             var name = record.Name == null ? null : Str.Clean(record.Name.GetString());
             // a pack named only by its set's code (a new set's pack): the set's name
             if (string.IsNullOrEmpty(name) || name.Length <= 4 && name.ToUpperInvariant() == name)
@@ -175,216 +196,300 @@ namespace HSAEnhanced
                 if (string.IsNullOrEmpty(set) && record.ShortName != null) set = Str.Clean(record.ShortName.GetString());
                 if (!string.IsNullOrEmpty(set) && set != name) name = set;
             }
-            return string.IsNullOrEmpty(name) ? id.ToString() : name;
+            return name;
         }
 
-        // ---- one opened pack --------------------------------------------------------------------
+        void OpenOne(UnopenedPack pack)
+        {
+            string why;
+            if (!pack.CanOpenPack(out why)) { Say(Str.Clean(why), true); return; }
+            Log.Info("packs: open one " + pack.GetBoosterId());
+            Ref.Set(Screen, "m_lastOpenedBoosterId", pack.GetBoosterId());
+            Ref.Call(Screen, "AutomaticallyOpenPack");
+        }
 
-        static List<PackOpeningCard> Cards(PackOpeningDirector director)
+        // several at once: how many is asked (2 to what the game allows and you have)
+        void OpenSeveral(UnopenedPack pack)
+        {
+            string why;
+            if (!pack.CanOpenPack(out why)) { Say(Str.Clean(why), true); return; }
+            if (pack.GetCount() <= 1) return;
+            int max = 0;
+            try { max = Screen.MassPackOpeningEnabled() ? Math.Min(Screen.MassPackOpeningPackLimit(pack.GetBoosterId()), pack.GetCount()) : 0; } catch { }
+            if (max < 2) return;
+            var p = pack;
+            TextInput.Ask(A("MASS_PACK_OPENING_QUANTITY_PROMPT", 2, max), text =>
+            {
+                int n;
+                if (!int.TryParse((text ?? "").Trim(), out n) || n < 2 || n > max)
+                {
+                    Say(A("MASS_PACK_OPENING_QUANTITY_PROMPT_ERROR", 2, max), true);
+                    Say(First());
+                    return;
+                }
+                Log.Info("packs: open " + n + " of " + p.GetBoosterId());
+                Ref.Invoke(Screen, "OpenBooster", p, n);
+            }, () => Say(First(), true));
+        }
+
+        // ---- the cards of a pack (or of a highlights page) ----------------------------------------
+
+        static List<PackOpeningCard> HiddenCards(PackOpeningDirector director)
         {
             var hidden = director == null ? null : Ref.Get(director, "m_hiddenCards");
             return hidden == null ? null : Ref.Get<List<PackOpeningCard>>(hidden, "m_cards");
         }
 
-        bool Opened(PackOpeningDirector director, List<PackOpeningCard> cards, ref string key, ref string title, List<GameButton> items)
+        static List<Item> CardItems(List<PackOpeningCard> cards)
         {
-            key = "pack";
-            title = Str.Word("GLUE_PACK_OPENING_HEADER");
-            m_director = director;
-            m_cards = new List<PackOpeningCard>();
-            foreach (var c in cards) if (c != null && c) m_cards.Add(c);
-            return true;
-        }
-
-        // a card not turned yet: a card (and the glow of its rarity the game shows); a turned one: its name
-        static string Name(PackOpeningCard card)
-        {
-            if (!card.IsRevealed())
+            var items = new List<Item>();
+            foreach (var card in cards)
             {
-                var hidden = card.GetEntityDef();
-                return Str.Join(CombatCards.HiddenName(), hidden == null ? null : Rarity(hidden));
+                if (card == null || !card) continue;
+                var c = card;
+                items.Add(new Item { Card = c, Lines = () => CardLines(c) });
             }
-            var lines = Lines(card);
-            return lines.Count > 0 ? lines[0] : "";
-        }
-
-        static string Rarity(EntityDef def)
-        {
-            switch (def.GetRarity())
-            {
-                case TAG_RARITY.COMMON: return Str.Word("GLOBAL_RARITY_COMMON");
-                case TAG_RARITY.RARE: return Str.Word("GLOBAL_RARITY_RARE");
-                case TAG_RARITY.EPIC: return Str.Word("GLOBAL_RARITY_EPIC");
-                case TAG_RARITY.LEGENDARY: return Str.Word("GLOBAL_RARITY_LEGENDARY");
-            }
-            return null;
+            return items;
         }
 
         static string Edition(string name, TAG_PREMIUM premium)
         {
             switch (premium)
             {
-                case TAG_PREMIUM.GOLDEN: return Speech.S("ACCESSIBILITY_READ_COLLECTION_CARD_NAME_GOLDEN", name);
-                case TAG_PREMIUM.DIAMOND: return Speech.S("ACCESSIBILITY_READ_COLLECTION_CARD_NAME_DIAMOND", name);
-                case TAG_PREMIUM.SIGNATURE: return Speech.S("ACCESSIBILITY_READ_COLLECTION_CARD_NAME_SIGNATURE", name);
+                case TAG_PREMIUM.GOLDEN: return A("READ_COLLECTION_CARD_NAME_GOLDEN", name);
+                case TAG_PREMIUM.DIAMOND: return A("READ_COLLECTION_CARD_NAME_DIAMOND", name);
+                case TAG_PREMIUM.SIGNATURE: return A("READ_COLLECTION_CARD_NAME_SIGNATURE", name);
             }
             return name;
         }
 
-        // a turned card's lines, as in a match: its name (edition, rarity, new) first, then cost,
-        // stats, text, tribe, type, flavor
-        static List<string> Lines(PackOpeningCard card)
+        // the class as the pack's card shows it: its class, its classes, or all classes
+        static string ClassLine(EntityDef def)
         {
-            var lines = new List<string>();
-            if (!card.IsRevealed()) { lines.Add(Name(card)); return lines; }
+            try
+            {
+                if (def.IsMultiClass())
+                {
+                    var classes = new List<TAG_CLASS>();
+                    def.GetClasses(classes);
+                    if (classes.Count >= 10) return Str.Word("GLUE_PACK_OPENING_ALL_CLASSES");
+                    if (classes.Count > 1) return Speech.HumanizeList(classes.ConvertAll(c => Str.Clean(GameStrings.GetClassName(c))));
+                }
+                return Str.Clean(GameStrings.GetClassName(def.GetClass()));
+            }
+            catch { return null; }
+        }
+
+        // turned: name (edition), class, cost, runes, stats, text, tribe, type, rarity, new; else "1 card"
+        static List<string> CardLines(PackOpeningCard card)
+        {
+            if (!card.IsRevealed()) return new List<string> { A("UI_REWARD_TYPE_ONE_CARD") };
             var merc = PackCards.MercLines(card);
             if (merc != null && merc.Count > 0) return new List<string>(merc);
             var def = card.GetEntityDef();
-            if (def == null) return lines;
-            lines = CombatCards.Lines(def);
-            if (lines.Count == 0) lines.Add(Str.Clean(def.GetName()));
-            bool isNew = Ref.Get<bool>(card, "m_isNew");
-            lines[0] = Str.Join(Edition(Str.Clean(def.GetName()), card.GetPremium()), Rarity(def), isNew ? Str.Word("GLUE_COLLECTION_CARD_NEW") : null);
+            if (def == null) return new List<string> { A("UI_REWARD_TYPE_ONE_CARD") };
+            var lines = new List<string> { Edition(Str.Clean(def.GetName()), card.GetPremium()), ClassLine(def) };
+            var rest = CombatCards.Lines(def);
+            string flavor = null;
+            try { flavor = Str.Clean(def.GetFlavorText()); } catch { }
+            for (int i = 1; i < rest.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(flavor) && rest[i] == flavor) continue;
+                lines.Add(rest[i]);
+            }
+            int runes = 0;
+            foreach (var t in new[] { GAME_TAG.COST_BLOOD, GAME_TAG.COST_FROST, GAME_TAG.COST_UNHOLY }) runes += def.GetTag(t);
+            if (runes > 0)
+            {
+                var parts = new List<string>();
+                if (def.GetTag(GAME_TAG.COST_BLOOD) > 0) parts.Add(def.GetTag(GAME_TAG.COST_BLOOD) + " " + A("READ_CARD_RUNE_BLOOD"));
+                if (def.GetTag(GAME_TAG.COST_FROST) > 0) parts.Add(def.GetTag(GAME_TAG.COST_FROST) + " " + A("READ_CARD_RUNE_FROST"));
+                if (def.GetTag(GAME_TAG.COST_UNHOLY) > 0) parts.Add(def.GetTag(GAME_TAG.COST_UNHOLY) + " " + A("READ_CARD_RUNE_UNHOLY"));
+                lines.Insert(Math.Min(3, lines.Count), Speech.HumanizeList(parts));
+            }
+            if (Ref.Get<bool>(card, "m_isNew")) lines.Add(Str.Word("GLUE_COLLECTION_CARD_NEW").ToLowerInvariant().Trim('!'));
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
             return lines;
+        }
+
+        static void Turn(PackOpeningCard card)
+        {
+            if (card == null || !card || card.IsRevealed() || !card.IsReady() || !card.IsRevealEnabled()) return;
+            card.ForceReveal();
+        }
+
+        // ---- several packs at once ----------------------------------------------------------------
+
+        bool Mass(PackOpeningDirector director, out string view, out string key, out string intro, out List<Item> items)
+        {
+            view = null; key = null; intro = null; items = null;
+            if (director.IsMassPackOpeningSummaryDoneButtonShowing())
+            {
+                view = "summary";
+                key = "summary";
+                intro = Str.Word("GLUE_MASS_PACK_OPEN_SUMMARY");
+                items = SummaryItems(director);
+                return true;
+            }
+            var highlights = Ref.Get<MassPackOpeningHighlights>(director, "m_massPackOpeningHighlights");
+            var cards = highlights == null ? null : highlights.GetPackOpeningCards();
+            if (cards == null || cards.Count == 0 || !cards.Exists(c => c != null && c && c.gameObject.activeInHierarchy)) return false;
+            if (!director.IsMassPackOpeningHighlightsContinueButtonShowing() && !director.IsMassPackOpeningHighlightsRevealButtonShowing() && !cards.Exists(c => c != null && c && c.IsReady())) return false;
+            view = "highlights";
+            key = "hl|" + cards[0].GetInstanceID();
+            items = CardItems(cards);
+            if (m_firstHighlights)
+            {
+                // the first page: the packs-opened count the game shows, and Highlights
+                m_firstHighlights = false;
+                var count = Ref.Get<UberText>(highlights, "m_numPacksOpened");
+                intro = Str.Join(count == null ? null : Str.Clean(Ui.ShownText(count.Text)), Str.Word("GLUE_MASS_PACK_OPEN_HIGHLIGHTS"));
+            }
+            return true;
+        }
+
+        static List<Item> SummaryItems(PackOpeningDirector director)
+        {
+            var items = new List<Item>();
+            var summary = Ref.Get<MassPackOpeningSummary>(director, "m_massPackOpeningSummary");
+            var model = summary == null ? null : summary.GetDataModel();
+            if (model == null) return items;
+            // the legendaries by name, or (many of them) by class as the game's fallback shows
+            int legendaries = model.LegendariesOpened == null ? 0 : model.LegendariesOpened.Count;
+            if (legendaries > 0)
+            {
+                var names = new List<string>();
+                foreach (var c in model.LegendariesOpened)
+                {
+                    var def = c == null ? null : DefLoader.Get().GetEntityDef(c.CardId);
+                    if (def != null) names.Add(Edition(Str.Clean(def.GetName()), c.Premium));
+                }
+                AddSummary(items, A("MASS_PACK_OPENING_SUMMARY_LEGENDARY_COUNT", legendaries), Speech.HumanizeList(names));
+            }
+            else AddByClass(items, "MASS_PACK_OPENING_SUMMARY_LEGENDARY_COUNT", model.LegendariesOpenedFallback);
+            AddByClass(items, "MASS_PACK_OPENING_SUMMARY_EPIC_COUNT", model.EpicsOpened);
+            AddByClass(items, "MASS_PACK_OPENING_SUMMARY_RARE_COUNT", model.RaresOpened);
+            AddByClass(items, "MASS_PACK_OPENING_SUMMARY_COMMON_COUNT", model.CommonsOpened);
+            return items;
+        }
+
+        static void AddByClass(List<Item> items, string key, IEnumerable entries)
+        {
+            if (entries == null) return;
+            int total = 0;
+            var parts = new List<string>();
+            foreach (var e in entries)
+            {
+                var c = e as Hearthstone.DataModels.ClassCardCountDataModel;
+                if (c == null || c.CardCount <= 0) continue;
+                total += c.CardCount;
+                string cls = null;
+                cls = Str.Clean(c.ClassName);
+                parts.Add(A("MASS_PACK_OPENING_SUMMARY_CLASS_COUNT", c.CardCount, cls));
+            }
+            if (total > 0) AddSummary(items, A(key, total), Speech.HumanizeList(parts));
+        }
+
+        static void AddSummary(List<Item> items, string header, string body)
+        {
+            var lines = new List<string> { header, body };
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            items.Add(new Item { Lines = () => lines });
+        }
+
+        // ---- reading and keys ---------------------------------------------------------------------
+
+        List<string> Lines()
+        {
+            if (m_at < 0 || m_at >= m_items.Count) return new List<string>();
+            return m_items[m_at].Lines();
         }
 
         string First()
         {
-            if (m_cards == null || m_cards.Count == 0) return "";
-            return Speech.S(K.MENU_OPTION_FORMAT, Name(m_cards[m_at]), m_at + 1, m_cards.Count);
+            if (m_items.Count == 0) return Speech.S("ACCESSIBILITY_LIST_NO_ITEMS");
+            m_at = Math.Max(0, Math.Min(m_at, m_items.Count - 1));
+            var lines = Lines();
+            return Speech.S(K.MENU_OPTION_FORMAT, lines.Count > 0 ? lines[0] : "", m_at + 1, m_items.Count);
         }
 
         void Move(int to)
         {
-            if (m_cards == null || m_cards.Count == 0) return;
-            m_at = Math.Max(0, Math.Min(m_cards.Count - 1, to)); m_line = 0;
+            if (m_items.Count == 0) return;
+            m_at = to; m_line = 0;
             Say(First(), true);
-        }
-
-        bool CardKeys()
-        {
-            int n = m_cards.Count;
-            if (Keys.Right.Pressed || Keys.Tab.Pressed) { if (m_at + 1 < n) Move(m_at + 1); return true; }
-            if (Keys.Left.Pressed || Keys.ShiftTab.Pressed) { if (m_at > 0) Move(m_at - 1); return true; }
-            if (Keys.Home.Pressed) { Move(0); return true; }
-            if (Keys.End.Pressed) { Move(n - 1); return true; }
-            var card = n > 0 && m_at < n ? m_cards[m_at] : null;
-            var lines = card == null ? new List<string>() : Lines(card);
-            if (Keys.ShiftUp.Pressed) { if (lines.Count > 0) Say(lines[Math.Min(m_line, lines.Count - 1)], true); return true; }
-            if (Keys.ShiftDown.Pressed) { for (int i = m_line; i < lines.Count; i++) Say(lines[i]); m_line = Math.Max(0, lines.Count - 1); return true; }
-            if (Keys.Down.Pressed) { if (m_line + 1 < lines.Count) Say(lines[++m_line], true); return true; }
-            if (Keys.Up.Pressed) { if (m_line > 0) Say(lines[--m_line], true); return true; }
-            // Enter turns the card over (it is read then); Space turns over the rest; once all are
-            // turned, Enter or Space is Done
-            if (Keys.Enter.Pressed && card != null)
-            {
-                bool allTurned = !m_cards.Exists(c => c != null && c && !c.IsRevealed());
-                if (allTurned && m_director != null && m_director.IsDoneButtonShown) { Log.Info("packs: done"); m_director.FinishPackOpen(); }
-                else if (card.IsRevealed()) Say(Name(card), true);
-                else { Turn(card, quiet: true); m_line = 0; Say(Name(card), true); }
-                return true;
-            }
-            if (Keys.Space.Pressed)
-            {
-                bool hidden = m_cards.Exists(c => c != null && c && !c.IsRevealed());
-                if (hidden)
-                {
-                    Log.Info("packs: reveal all");
-                    foreach (var c in m_cards) if (c != null && c && !c.IsRevealed()) Turn(c, quiet: true);
-                    m_line = 0;
-                    Say(First(), true);
-                }
-                else if (m_director != null && m_director.IsDoneButtonShown) { Log.Info("packs: done"); m_director.FinishPackOpen(); }
-                return true;
-            }
-            if (Keys.Back.Pressed) { Back(); return true; }
-            return false;
-        }
-
-        static void Turn(PackOpeningCard card, bool quiet = false)
-        {
-            if (card.IsRevealed()) { if (!quiet) Speech.Say(Name(card)); return; }
-            if (!card.IsReady() || !card.IsRevealEnabled()) return;
-            card.ForceReveal();
-            if (!quiet) Speech.Say(Name(card));
-        }
-
-        // ---- several packs at once --------------------------------------------------------------
-
-        bool Mass(PackOpeningDirector director, ref string key, ref string title, List<GameButton> items)
-        {
-            title = Str.Word("GLUE_PACK_OPENING_HEADER");
-            if (director.IsMassPackOpeningSummaryDoneButtonShowing())
-            {
-                key = "mass:summary";
-                var summary = Ref.Get<MassPackOpeningSummary>(director, "m_massPackOpeningSummary");
-                var model = summary == null ? null : summary.GetDataModel();
-                if (model != null)
-                {
-                    AddCount(items, director, "GLOBAL_RARITY_COMMON", model.CommonsOpened);
-                    AddCount(items, director, "GLOBAL_RARITY_RARE", model.RaresOpened);
-                    AddCount(items, director, "GLOBAL_RARITY_EPIC", model.EpicsOpened);
-                    AddCount(items, director, "GLOBAL_RARITY_LEGENDARY", model.LegendariesOpened);
-                }
-                items.Add(new GameButton { Target = director, Label = Str.Word("GLOBAL_DONE"), Click = () => { Log.Info("packs: done (several)"); director.MassPackOpeningDonePressed(); } });
-                return true;
-            }
-            if (director.IsMassPackOpeningHighlightsContinueButtonShowing())
-            {
-                key = "mass:highlights";
-                items.Add(new GameButton { Target = director, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => director.MassPackOpeningContinuePressed() });
-                return true;
-            }
-            if (director.IsMassPackOpeningHighlightsRevealButtonShowing())
-            {
-                key = "mass:reveal";
-                items.Add(new GameButton { Target = director, Label = Str.Word("GLUE_MASS_PACK_OPEN_REVEAL_ALL"), Click = () => director.MassPackOpeningRevealAllPressed() });
-                return true;
-            }
-            return false;
-        }
-
-        // a rarity's cards, all classes together
-        // (per-class counts, or the cards themselves for legendaries)
-        static void AddCount(List<GameButton> items, PackOpeningDirector director, string rarityKey, IEnumerable entries)
-        {
-            int count = 0;
-            if (entries != null)
-                foreach (var e in entries)
-                {
-                    var perClass = e as Hearthstone.DataModels.ClassCardCountDataModel;
-                    if (perClass != null) count += perClass.CardCount; else if (e != null) count++;
-                }
-            if (count <= 0) return;
-            var label = Str.Join(Str.Word(rarityKey), count.ToString());
-            items.Add(new GameButton { Target = director, Label = label, Click = () => Speech.Say(label) });
-        }
-
-        // the game's back (it refuses while a pack is being opened)
-        void Back()
-        {
-            Log.Info("packs: back");
-            Navigation.GoBack();
         }
 
         internal override bool HandleKey()
         {
-            if (m_cards != null && m_menu == null) return CardKeys();
-            return m_menu != null && m_menu.HandleKey();
+            Refresh(true);
+            if (m_view == null) return false;
+            int n = m_items.Count;
+            var director = Director;
+            if (Keys.Right.Pressed) { if (m_at + 1 < n) Move(m_at + 1); return true; }
+            if (Keys.Left.Pressed) { if (m_at > 0) Move(m_at - 1); return true; }
+            if (Keys.Tab.Pressed) { if (n > 0) Move((m_at + 1) % n); return true; }
+            if (Keys.ShiftTab.Pressed) { if (n > 0) Move((m_at + n - 1) % n); return true; }
+            if (Keys.Home.Pressed) { Move(0); return true; }
+            if (Keys.End.Pressed) { Move(n - 1); return true; }
+            var lines = Lines();
+            if (Keys.ShiftUp.Pressed) { if (lines.Count > 0) Say(lines[Math.Min(m_line, lines.Count - 1)], true); return true; }
+            if (Keys.ShiftDown.Pressed) { for (int i = m_line; i < lines.Count; i++) Say(lines[i]); m_line = Math.Max(0, lines.Count - 1); return true; }
+            if (Keys.Down.Pressed) { if (m_line + 1 < lines.Count) Say(lines[++m_line], true); return true; }
+            if (Keys.Up.Pressed) { if (m_line > 0) Say(lines[--m_line], true); return true; }
+            var item = n > 0 && m_at < n ? m_items[m_at] : null;
+            switch (m_view)
+            {
+                case "list":
+                    if (Keys.Enter.Pressed) { if (item != null && item.Pack != null) OpenOne(item.Pack); return true; }
+                    if (Keys.Space.Pressed) { if (item != null && item.Pack != null) OpenSeveral(item.Pack); return true; }
+                    if (Keys.Back.Pressed) { Log.Info("packs: back"); Navigation.GoBack(); return true; }
+                    return false;
+                case "pack":
+                    if (Keys.Enter.Pressed)
+                    {
+                        if (director != null && director.IsDoneButtonShown) { Log.Info("packs: done"); director.FinishPackOpen(); }
+                        else if (item != null) Turn(item.Card);
+                        return true;
+                    }
+                    if (Keys.Space.Pressed) { if (director != null && !director.IsDoneButtonShown) director.ForceRevealRandomCard(); return true; }
+                    return Keys.Back.Pressed;
+                case "highlights":
+                    if (Keys.Enter.Pressed)
+                    {
+                        if (director.IsMassPackOpeningHighlightsContinueButtonShowing()) { Log.Info("packs: next page"); director.MassPackOpeningContinuePressed(); }
+                        else if (item != null) Turn(item.Card);
+                        return true;
+                    }
+                    if (Keys.Space.Pressed) { if (director.IsMassPackOpeningHighlightsRevealButtonShowing()) director.MassPackOpeningRevealAllPressed(); return true; }
+                    return Keys.Back.Pressed;
+                case "summary":
+                    if (Keys.Enter.Pressed) { Log.Info("packs: done (several)"); director.MassPackOpeningDonePressed(); return true; }
+                    return Keys.Back.Pressed;
+            }
+            return false;
         }
 
         internal override string Help()
         {
-            if (m_cards != null && m_menu == null)
-                return Str.Join(Speech.S("ACCESSIBILITY_SCREEN_PACK_OPENING_MASS_PACK_OPENING_HELP", Keys.Enter.Name, Keys.Space.Name), Keys.Space.Name, Str.Word("GLOBAL_DONE"));
-            return m_menu == null ? "" : m_menu.Help();
+            var director = Director;
+            switch (m_view)
+            {
+                case "list":
+                    return m_items.Count == 0 ? Speech.S("ACCESSIBILITY_LIST_NO_ITEMS")
+                        : Speech.S(K.MENU_HORIZONTAL_HELP_WITH_BACK_BUTTON, Keys.Enter.Name, Keys.Back.Name);
+                case "pack":
+                    return director != null && director.IsDoneButtonShown ? A("PRESS_KEY_TO_CONTINUE", Keys.Enter.Name) : A("SCREEN_PACK_OPENING_OPEN_CARDS_HELP", Keys.Enter.Name);
+                case "highlights":
+                    return director != null && director.IsMassPackOpeningHighlightsContinueButtonShowing() ? A("PRESS_KEY_TO_CONTINUE", Keys.Enter.Name)
+                        : A("SCREEN_PACK_OPENING_MASS_PACK_OPENING_HELP", Keys.Enter.Name, Keys.Space.Name);
+                case "summary":
+                    return A("MASS_PACK_OPENING_SUMMARY_HELP", Keys.Enter.Name);
+            }
+            return A("GLOBAL_LOADING");
         }
 
-        internal override void Read()
-        {
-            if (m_cards != null && m_menu == null) { Say(First(), true); return; }
-            if (m_menu != null) m_menu.StartReading();
-        }
+        internal override void Read() { if (m_view != null) Say(First(), true); }
     }
 }
 #endif

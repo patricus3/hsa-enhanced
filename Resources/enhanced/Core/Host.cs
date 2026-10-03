@@ -42,6 +42,8 @@ namespace HSAEnhanced.Core
             try { Collection.Tick(); } catch (Exception e) { Log.Error(e); }
             try { TavernBrawl.Tick(); } catch (Exception e) { Log.Error(e); }
             try { BgCollection.Tick(); } catch (Exception e) { Log.Error(e); }
+            try { QuestPopup.Tick(); } catch (Exception e) { Log.Error(e); }
+            try { Announce.Tick(); } catch (Exception e) { Log.Error(e); }
             try { DeckTray.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Friends.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Match.Tick(); } catch (Exception e) { Log.Error(e); }

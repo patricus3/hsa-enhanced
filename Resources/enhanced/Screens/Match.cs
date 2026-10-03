@@ -102,7 +102,8 @@ namespace HSAEnhanced
 
             // Choose One / Discover: a list of the cards the game shows
             var cards = ChoiceCardMgr.Get() == null ? null : ChoiceCardMgr.Get().GetFriendlyCards();
-            bool shown = cards != null && cards.Count > 0 && ChoiceCardMgr.Get().IsFriendlyShown();
+            // a Rewind choice is two buttons (Rewind / Keep) instead of cards on show: a choice all the same
+            bool shown = cards != null && cards.Count > 0 && (ChoiceCardMgr.Get().IsFriendlyShown() || RewindUIManager.IsShowingRewindUI);
             if (shown && (!m_choicesShown || !Equals(m_choiceKey, cards[0])))
             {
                 m_choicesShown = true;
@@ -110,7 +111,7 @@ namespace HSAEnhanced
                 m_mode = Mode.Choices;
                 m_list = new List<Card>(cards);
                 m_at = 0; m_line = 0;
-                Say(gs.IsInSubOptionMode() ? Str.Word("GAMEPLAY_CHOOSE_ONE") : ChoiceTitle());
+                Say(RewindUIManager.IsShowingRewindUI ? Speech.S("ACCESSIBILITY_GAMEPLAY_QUERY_REWIND") : gs.IsInSubOptionMode() ? Str.Word("GAMEPLAY_CHOOSE_ONE") : ChoiceTitle());
                 ReadListItem();
             }
             else if (!shown && m_choicesShown)
@@ -174,10 +175,12 @@ namespace HSAEnhanced
             }
 
             bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET;
-            if (Combat.ZoneKeys(this, target && !gs.CanTargetCardsInHand())) return true;
-            if (Combat.ZoneMove(this)) return true;
-            if (Combat.ValidItems(this)) return true;
-            if (Combat.CardLines(this)) return true;
+            // the shared combat handlers were written as Hearthstone Access hooks ("true": skip HSA's
+            // handler), so they claim every key: each gets only the keys it handles
+            if (ZoneKey() && Combat.ZoneKeys(this, target && !gs.CanTargetCardsInHand())) return true;
+            if (MoveKey() && Combat.ZoneMove(this)) return true;
+            if ((Bind.READ_NEXT_VALID_ITEM.Pressed || Bind.READ_PREV_VALID_ITEM.Pressed) && Combat.ValidItems(this)) return true;
+            if (LineKey() && Combat.CardLines(this)) return true;
             if (Combat.StatusKeys(this)) return true;
 
             if (target || gs.IsInSubOptionMode())
@@ -191,6 +194,12 @@ namespace HSAEnhanced
             if (!gs.IsInMainOptionMode()) return false;
             var card = Combat.FocusedCard;
             if (Keys.Enter.Pressed) { if (card != null) Act(card); return true; }
+            // Space on your hero: the emotes, as clicking the hero opens them
+            if (Keys.Space.Pressed && card != null && card.GetEntity() != null && card.GetEntity().IsHero() && card.GetEntity().IsControlledByFriendlySidePlayer())
+            {
+                EmoteUI.Open();
+                return true;
+            }
             if (Bind.FORCE_END_TURN.Pressed) { EndTurn(); return true; }
             if (Bind.END_TURN.Pressed) { AskEndTurn(); return true; }
             if (Bind.SEND_MINION_TO_FACE.Pressed) { MinionToFace(card); return true; }
@@ -199,10 +208,28 @@ namespace HSAEnhanced
             return false;
         }
 
+        static bool ZoneKey()
+        {
+            return Bind.SEE_PLAYER_HAND.Pressed || Bind.SEE_PLAYER_SECRETS.Pressed || Bind.SEE_OPPONENT_SECRETS.Pressed || Bind.SEE_PLAYER_MINIONS.Pressed
+                || Bind.SEE_OPPONENT_MINIONS.Pressed || Bind.SEE_OPPONENT_HERO.Pressed || Bind.SEE_PLAYER_HERO.Pressed || Bind.SEE_PLAYER_HERO_POWER.Pressed
+                || Bind.SEE_OPPONENT_HERO_POWER.Pressed || Bind.SEE_PLAYER_WEAPON.Pressed || Bind.SEE_OPPONENT_WEAPON.Pressed;
+        }
+
+        static bool MoveKey()
+        {
+            return Bind.READ_NEXT_ITEM.Pressed || Bind.READ_PREV_ITEM.Pressed || Bind.READ_FIRST_ITEM.Pressed || Bind.READ_LAST_ITEM.Pressed || Keys.Number().HasValue;
+        }
+
+        static bool LineKey()
+        {
+            return Bind.READ_NEXT_LINE.Pressed || Bind.READ_PREV_LINE.Pressed || Bind.READ_CUR_LINE.Pressed || Bind.READ_TO_END.Pressed || Bind.READ_ORIGINAL_CARD_STATS.Pressed;
+        }
+
         internal override string Help()
         {
             var gs = GS;
             if (gs == null) return "";
+            if (m_mode == Mode.Choices && RewindUIManager.IsShowingRewindUI) return Speech.S("ACCESSIBILITY_GAMEPLAY_REWIND_MODE_HELP", Bind.REWIND.Name, Bind.REWIND_KEEP.Name);
             if (m_mode == Mode.Mulligan) return Speech.S(K.GAMEPLAY_MULLIGAN_HELP, Keys.Space.Name, Keys.Enter.Name);
             if (m_confirmEndTurn) return Speech.S(K.GAMEPLAY_CONFIRM_END_TURN_HELP, Keys.Enter.Name, Bind.END_TURN.Name);
             if (gs.IsInTargetMode()) return Speech.S(K.GAMEPLAY_CHOOSE_TARGET_HELP, Keys.Tab.Name, Keys.Enter.Name, Keys.Back.Name);
@@ -223,9 +250,26 @@ namespace HSAEnhanced
             if (MercBattle.OnEnter(card)) return;
             if (!gs.IsValidOption(e))
             {
+                // as a click does: the game's error (the hero says it, the message is spoken by our hook)
+                var type = PlayErrors.ErrorType.NONE;
+                try { type = gs.GetErrorType(e); } catch { }
+                if (type != PlayErrors.ErrorType.NONE)
+                {
+                    try { PlayErrors.DisplayPlayError(type, gs.GetErrorParam(e), e); return; }
+                    catch (Exception ex) { Log.Error(ex); }
+                }
                 Say(WhyNot(e) ?? Str.Join(Str.Clean(e.GetName()), Str.Unavailable));
                 return;
             }
+            // the sounds a click makes: picking a card up from the hand, an attacker getting ready
+            try
+            {
+                if (e.GetZone() == TAG_ZONE.HAND)
+                    SoundManager.Get().LoadAndPlay((AssetReference)"FX_MinionSummon01_DrawFromHand_01.prefab:c8adc026a7f5d0a4cb0706627a980c58", card.gameObject);
+                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter() && !e.IsInteractableObject())
+                    card.ActivateCharacterAttackEffects();
+            }
+            catch (Exception ex) { Log.Error(ex); }
             // from hand, a minion or location goes somewhere on the board: ask where first
             if (e.GetZone() == TAG_ZONE.HAND && (e.IsMinion() || e.IsLocation()))
             {
@@ -352,11 +396,27 @@ namespace HSAEnhanced
         bool ChoiceKeys()
         {
             if (m_list.Count == 0) return false;
+            // Rewind: U rewinds, J keeps (the zone keys still look at the board)
+            if (RewindUIManager.IsShowingRewindUI && (Bind.REWIND.Pressed || Bind.REWIND_KEEP.Pressed))
+            {
+                var hud = RewindUIManager.Get();
+                var button = hud == null ? null : Ref.Get<UIBButton>(hud, Bind.REWIND.Pressed ? "m_rewindButton" : "m_keepButton");
+                Log.Info("match: " + (Bind.REWIND.Pressed ? "rewind" : "keep"));
+                if (button != null && button.gameObject.activeInHierarchy) button.TriggerRelease();
+                return true;
+            }
             if (ListKeys(Keys.Tab.Pressed && GS.IsInSubOptionMode())) return true;
             if (Keys.Enter.Pressed)
             {
                 var e = m_list[m_at].GetEntity();
                 Log.Info("match: chose " + e.GetName());
+                // Rewind / Keep: the game's own button (its animation goes with it)
+                if (RewindUIManager.IsShowingRewindUI)
+                {
+                    var hud = RewindUIManager.Get();
+                    var button = hud == null ? null : Ref.Get<UIBButton>(hud, e.GetCardId() == RewindUIManager.REWIND_CHOICE_CARDID ? "m_rewindButton" : "m_keepButton");
+                    if (button != null && button.gameObject.activeInHierarchy) { button.TriggerRelease(); return true; }
+                }
                 if (GS.IsInSubOptionMode()) InputManager.Get().HandleClickOnSubOption(e);
                 else InputManager.Get().DoNetworkResponse(e);
                 return true;
@@ -580,4 +640,66 @@ namespace HSAEnhanced
         #endregion
     }
 }
+
+namespace HSAEnhanced
+{
+    // the emotes (Space on your hero): the game's emote options as a menu; Enter says it, as clicking does
+    class EmoteUI : Core.Screen
+    {
+        static EmoteUI s_open;
+        Core.Menu m_menu;
+
+        internal override bool Alive { get { var h = EmoteHandler.Get(); return h != null && h.AreEmotesActive(); } }
+
+        internal static void Open()
+        {
+            var handler = EmoteHandler.Get();
+            if (handler == null || GameState.Get() == null || GameState.Get().IsBusy()) { Core.Speech.Say(Str.Unavailable); return; }
+            handler.ShowEmotes();
+            if (!handler.AreEmotesActive()) { Core.Speech.Say(Str.Unavailable); return; }
+            if (s_open != null) Core.Focus.Pop(s_open);
+            s_open = new EmoteUI();
+            s_open.Build(handler);
+            Core.Focus.Push(s_open);
+            s_open.Read();
+        }
+
+        void Build(EmoteHandler handler)
+        {
+            var menu = new Core.Menu(this, "", Close);
+            var options = Ref.Get<System.Collections.Generic.List<EmoteOption>>(handler, "m_availableEmotes");
+            if (options != null)
+                foreach (var o in options)
+                {
+                    if (o == null || !o.gameObject.activeInHierarchy) continue;
+                    var option = o;
+                    string label = o.m_Text == null ? null : Str.Clean(Ui.ShownText(o.m_Text.Text));
+                    if (string.IsNullOrEmpty(label)) label = o.m_EmoteType.ToString();
+                    menu.AddOption(label, () =>
+                    {
+                        if (handler.EmoteSpamBlocked()) { Core.Speech.Say(Str.Unavailable); return; }
+                        Log.Info("match: emote " + option.m_EmoteType);
+                        option.DoClick();
+                        Close();
+                    });
+                }
+            m_menu = menu;
+        }
+
+        void Close()
+        {
+            var handler = EmoteHandler.Get();
+            if (handler != null && handler.AreEmotesActive()) handler.HideEmotes();
+            Core.Focus.Pop(this);
+            if (s_open == this) s_open = null;
+        }
+
+        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
+
+        internal override string Help() { return m_menu == null ? "" : m_menu.Help(); }
+
+        internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
+    }
+}
+
 #endif
