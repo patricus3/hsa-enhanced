@@ -26,7 +26,9 @@ namespace HSAEnhanced
         static Snap s_last;
         static bool s_canSnapshot, s_started, s_turnStarted, s_waitingBanner, s_turnStartPending;
         static TAG_STEP s_prevStep;
+        static int s_lastTurn;
         static readonly List<string> s_deferred = new List<string>();
+        static readonly List<string> s_held = new List<string>();     // said during the mulligan: after it
         static readonly HashSet<PowerTaskList> s_described = new HashSet<PowerTaskList>();
         static readonly HashSet<PowerTaskList> s_ended = new HashSet<PowerTaskList>();
         static readonly List<PowerTaskList> s_pending = new List<PowerTaskList>();
@@ -52,7 +54,8 @@ namespace HSAEnhanced
             s_last = null;
             s_canSnapshot = s_started = s_turnStarted = s_waitingBanner = s_turnStartPending = false;
             s_prevStep = TAG_STEP.INVALID;
-            s_deferred.Clear(); s_described.Clear(); s_ended.Clear(); s_pending.Clear();
+            s_lastTurn = 0;
+            s_deferred.Clear(); s_held.Clear(); s_described.Clear(); s_ended.Clear(); s_pending.Clear();
             s_lastCurrent = null;
             s_sheathed.Clear(); s_unsheathed.Clear(); s_broke.Clear();
             if (gs != null)
@@ -103,10 +106,32 @@ namespace HSAEnhanced
             }
             if (s_ended.Count > 400) s_ended.Clear();
 
-            // your turn: when the game says it started (after the draw)
-            if (s_turnStartPending && current == null) { s_turnStartPending = false; YourTurn(gs); }
+            // what came during the mulligan (its cards still moving): once it is over
+            bool mulligan = Mulligan();
+            if (!mulligan && s_held.Count > 0)
+            {
+                var held = new List<string>(s_held);
+                s_held.Clear();
+                foreach (var h in held) { if (s_waitingBanner) s_deferred.Add(h); else Say(h); }
+            }
+            // your turn: when the game shows its "Your Turn" banner (the mulligan over, the mana given)
+            if (s_turnStartPending && current == null && !mulligan && BannerShown()) { s_turnStartPending = false; YourTurn(gs); }
             // no turn event (some missions): what was held back is not kept forever
             else if (s_waitingBanner && Time.unscaledTime - s_waitingSince > 10f && gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode()) YourTurn(gs);
+        }
+
+        static bool Mulligan()
+        {
+            var m = MulliganManager.Get();
+            try { return m != null && (m.IsMulliganActive() || m.IsMulliganIntroActive()); } catch { return false; }
+        }
+
+        // the game's banner for your turn has been shown (or there is none to wait for)
+        static bool BannerShown()
+        {
+            var t = TurnStartManager.Get();
+            if (t == null) return true;
+            try { return Ref.Get<bool>(t, "m_twoScoopsDisplayed") || t.IsTurnStartIndicatorShowing() || !t.IsListeningForTurnEvents(); } catch { return true; }
         }
 
         static void Say(string text)
@@ -278,6 +303,7 @@ namespace HSAEnhanced
         {
             var lines = new List<string>();
             bool canDescribe = s_started;
+            bool quietDamage = false;       // minion against minion: the damage is not said (deaths are)
             Entity source = null;
             foreach (var t in ended)
             {
@@ -297,7 +323,7 @@ namespace HSAEnhanced
                 {
                     var att = t.GetAttacker();
                     var def = t.GetDefender();
-                    if (!(att != null && att.IsHero()) && !(def != null && def.IsHero())) canDescribe = false;
+                    if (!(att != null && att.IsHero()) && !(def != null && def.IsHero())) quietDamage = true;
                 }
                 // burned cards (a full hand)
                 foreach (var task in t.GetTaskList())
@@ -314,6 +340,24 @@ namespace HSAEnhanced
 
             var step = (TAG_STEP)gs.GetGameEntity().GetTag(GAME_TAG.STEP);
             bool changed = step != s_prevStep;
+            // checked once a frame, a short step (MAIN_READY) is easily missed: the game is under way once
+            // it is past the mulligan, and a new turn is a new turn number
+            bool pastMulligan = step != TAG_STEP.INVALID && step != TAG_STEP.BEGIN_FIRST && step != TAG_STEP.BEGIN_SHUFFLE
+                && step != TAG_STEP.BEGIN_DRAW && step != TAG_STEP.BEGIN_MULLIGAN;
+            if (pastMulligan && !s_started) { s_started = true; s_canSnapshot = true; }
+            int turn = gs.GetTurn();
+            if (pastMulligan && turn != s_lastTurn)
+            {
+                if (s_lastTurn > 0 && s_turnStarted && step != TAG_STEP.MAIN_END)
+                {
+                    lines.Add(A("GAMEPLAY_TURN_ENDED"));
+                    TurnEnded(gs);
+                }
+                s_lastTurn = turn;
+                s_turnStarted = false;
+                TurnChange(gs, lines);
+                s_canSnapshot = true;
+            }
             if (step == TAG_STEP.MAIN_END)
             {
                 if (changed && s_turnStarted)
@@ -324,12 +368,7 @@ namespace HSAEnhanced
                     s_canSnapshot = true;
                 }
             }
-            else if (step == TAG_STEP.MAIN_READY)
-            {
-                if (!s_started) s_started = true;
-                TurnChange(gs, lines);
-                s_canSnapshot = true;
-            }
+            else if (step == TAG_STEP.MAIN_READY) s_canSnapshot = true;
             else if (step == TAG_STEP.MAIN_START_TRIGGERS || step == TAG_STEP.MAIN_START) s_canSnapshot = true;
             else if (step == TAG_STEP.BEGIN_MULLIGAN)
             {
@@ -342,7 +381,7 @@ namespace HSAEnhanced
 
             if (!s_canSnapshot) { Out(lines); return; }
             var now = SnapshotFull(gs);
-            if (canDescribe && s_last != null) lines.Add(Diff(gs, s_last, now, source == null ? 0 : source.GetEntityId(), step));
+            if (canDescribe && s_last != null) lines.Add(Diff(gs, s_last, now, source == null ? 0 : source.GetEntityId(), step, quietDamage));
             s_last = now;
             Out(lines);
         }
@@ -358,6 +397,7 @@ namespace HSAEnhanced
             var text = Lines(lines);
             if (text.Length == 0) return;
             if (s_waitingBanner) { s_deferred.Add(text); return; }
+            if (Mulligan()) { s_held.Add(text); return; }
             Say(text);
         }
 
@@ -618,7 +658,7 @@ namespace HSAEnhanced
             return new P(A("GAMEPLAY_DIFF_" + key, args), A("GAMEPLAY_DIFF_" + (multipleKey ?? key), args));
         }
 
-        static string Diff(GameState gs, Snap prevFull, Snap full, int sourceId, TAG_STEP step)
+        static string Diff(GameState gs, Snap prevFull, Snap full, int sourceId, TAG_STEP step, bool quietDamage = false)
         {
             var before = prevFull.All;
             var after = full.All;
@@ -692,7 +732,8 @@ namespace HSAEnhanced
                 }
                 parts.Add(Grouped(entries, before, sourceId, s => NameInList(s, died)));
             }
-            // the other changes
+            // the other changes (not after a minion fought a minion: its deaths say enough)
+            if (quietDamage) changed.Clear();
             parts.Add(Grouped(changed, before, sourceId, s => { S b2; return NameInZone(before.TryGetValue(s.Id, out b2) ? b2 : s, after); }));
 
             // mana gained mid-turn (spending is not said)

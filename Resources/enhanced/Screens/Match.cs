@@ -163,6 +163,8 @@ namespace HSAEnhanced
                 return Combat.StatusKeys(this);
             }
             if (m_mode == Mode.Mulligan) return MulliganKeys();
+            // Z: the pet and the board's clickable decorations
+            if (Core.Key.Of(KeyCode.Z).Pressed) { BoardObjects.Open(); return true; }
             if (m_mode == Mode.Choices && ChoiceKeys()) return true;
             if (m_mode == Mode.Place) return PlaceKeys();
 
@@ -267,7 +269,7 @@ namespace HSAEnhanced
                 if (e.GetZone() == TAG_ZONE.HAND)
                     SoundManager.Get().LoadAndPlay((AssetReference)"FX_MinionSummon01_DrawFromHand_01.prefab:c8adc026a7f5d0a4cb0706627a980c58", card.gameObject);
                 else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter() && !e.IsInteractableObject())
-                    card.ActivateCharacterAttackEffects();
+                    AttackCry(card);
             }
             catch (Exception ex) { Log.Error(ex); }
             // from hand, a minion or location goes somewhere on the board: ask where first
@@ -504,7 +506,7 @@ namespace HSAEnhanced
             if (Keys.Enter.Pressed)
             {
                 var button = Ref.Get(MulliganManager.Get(), "mulliganButton") as NormalButton;
-                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); button.TriggerRelease(); m_mode = Mode.Browse; m_list.Clear(); }
+                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); GameStart.Confirmed = true; button.TriggerRelease(); m_mode = Mode.Browse; m_list.Clear(); }
                 return true;
             }
             if (Keys.Tab.Pressed) { m_at = (m_at + 1) % m_list.Count; ReadListItem(); return true; }
@@ -584,6 +586,14 @@ namespace HSAEnhanced
 
         static bool CanBeTargetedByOpponents(Entity e) { return !e.HasTag(GAME_TAG.CANT_BE_TARGETED_BY_OPPONENTS) && !e.IsStealthed(); }
 
+        // the attacker's cry, as picking it up with the mouse plays it (its sounds loaded first)
+        static void AttackCry(Card card)
+        {
+            if (card == null) return;
+            try { card.GetAttackSoundSpells(true); card.ActivateCharacterAttackEffects(); }
+            catch (Exception ex) { Log.Error(ex); }
+        }
+
         void MinionToFace(Card card)
         {
             if (card == null) return;
@@ -622,6 +632,7 @@ namespace HSAEnhanced
                 var attacker = list[0];
                 var hero = EnemyHero;
                 Log.Info("match: " + attacker.GetName() + " attacks the hero");
+                AttackCry(attacker.GetCard());
                 if (!InputManager.Get().DoNetworkResponse(attacker)) yield break;
                 yield return null;
                 if (GS.IsInTargetMode()) InputManager.Get().DoNetworkResponse(hero);

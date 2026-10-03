@@ -30,6 +30,7 @@ namespace HSAEnhanced.Core
 
         void Update()
         {
+            try { Launch.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Focus.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Generic.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Hub.Tick(); } catch (Exception e) { Log.Error(e); }
@@ -43,6 +44,8 @@ namespace HSAEnhanced.Core
             try { TavernBrawl.Tick(); } catch (Exception e) { Log.Error(e); }
             try { BgCollection.Tick(); } catch (Exception e) { Log.Error(e); }
             try { QuestPopup.Tick(); } catch (Exception e) { Log.Error(e); }
+            try { EndMatch.Tick(); } catch (Exception e) { Log.Error(e); }
+            try { GameStart.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Announce.Tick(); } catch (Exception e) { Log.Error(e); }
             try { DeckTray.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Friends.Tick(); } catch (Exception e) { Log.Error(e); }

@@ -10,6 +10,7 @@ namespace HSAEnhanced
     // Black Market and lucky draw buttons appear late), on the same option.
     static class Hub
     {
+        static bool s_welcomed;
         static HubUI s_ui;
 
         internal static bool InHub
@@ -35,6 +36,8 @@ namespace HSAEnhanced
                 Generic.Yield();
 #endif
                 Focus.PushBase(ui);
+                // the first time the main menu comes after launching: welcome
+                if (!s_welcomed) { s_welcomed = true; Speech.Say(Speech.S("ACCESSIBILITY_WELCOME_TO_HEARTHSTONE")); Log.Info("launch: welcome"); }
                 if (ui.Focused) ui.Read();
             }
             if (s_ui != null) s_ui.Refresh(false);
