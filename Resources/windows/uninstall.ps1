@@ -1,4 +1,4 @@
-# Hearthstone Access for Windows uninstaller: removes the rebuild and prompt tasks and the mod files and
+# Hearthstone Access Enhanced for Windows uninstaller: removes the rebuild and prompt tasks and the mod files and
 # puts the game's own Assembly-CSharp.dll back. Started by "Uninstall Hearthstone access.bat".
 $ErrorActionPreference = 'Stop'
 $Data = if ($env:HSA_DATA_DIR) { $env:HSA_DATA_DIR } else { Join-Path $env:ProgramData 'HearthstoneAccess' }

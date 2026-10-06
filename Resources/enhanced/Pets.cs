@@ -43,10 +43,6 @@ namespace HSAEnhanced
             if (editDeck && PetsManager.Get().GetTotalPetsOwned() <= 0) return;
             s_added.Add(menu, true);
             var from = menu;
-#if !WITHOUT_HSA
-            var hsaMenu = menu as Accessibility.AccessibleMenu;
-            if (hsaMenu != null) hsaMenu.AddOption(Title, () => AccessiblePets.Open(from));
-#endif
         }
 
         internal static CollectionDeck EditedDeck()

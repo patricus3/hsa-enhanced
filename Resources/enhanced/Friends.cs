@@ -35,9 +35,6 @@ namespace HSAEnhanced
         // every frame
         internal static void Tick()
         {
-#if !WITHOUT_HSA
-            if (!Engine.Enabled) return;
-#endif
             if (s_ui == null && Showing)
             {
                 s_ui = new FriendsUI();
@@ -56,9 +53,6 @@ namespace HSAEnhanced
         }
 
         // start of AccessibilityMgr.ShowUI: Hearthstone Access's friends list is not used
-#if !WITHOUT_HSA
-        internal static bool IsHsaList(object ui) { return Engine.Enabled && ui is FriendListFrame; }
-#endif
 
         internal static string Checked(bool on) { return Speech.S(on ? "ACCESSIBILITY_OPTIONS_MENU_CHECKBOX_CHECKED" : "ACCESSIBILITY_OPTIONS_MENU_CHECKBOX_NOT_CHECKED"); }
 

@@ -32,9 +32,7 @@ namespace HSAEnhanced
                 var ui = new HubUI();
                 if (!ui.Refresh(true)) return;     // the box is still opening
                 s_ui = ui;
-#if WITHOUT_HSA
                 Generic.Yield();
-#endif
                 Focus.PushBase(ui);
                 // the first time the main menu comes after launching: welcome
                 if (!s_welcomed) { s_welcomed = true; Speech.Say(Speech.S("ACCESSIBILITY_WELCOME_TO_HEARTHSTONE")); Log.Info("launch: welcome"); }

@@ -103,9 +103,6 @@ namespace HSAEnhanced
                 {
                     if (price == null) continue;
                     var s = "";
-#if !WITHOUT_HSA
-                    try { s = Accessibility.AccessibleShopUtils.GetBuyText(price); } catch { }
-#endif
                     if (!string.IsNullOrEmpty(s)) return s;
                     if (!string.IsNullOrEmpty(price.DisplayText)) return Str.Clean(price.DisplayText) + " " + price.Currency;
                 }

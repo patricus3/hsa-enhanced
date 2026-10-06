@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -173,4 +172,3 @@ namespace HSAEnhanced
         internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }
-#endif

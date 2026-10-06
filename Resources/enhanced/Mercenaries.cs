@@ -35,16 +35,6 @@ namespace HSAEnhanced
                 var scenes = SceneMgr.Get();
                 bool here = GameState.Get() == null && scenes != null && IsMercMode(scenes.GetMode());
                 if (!here) { Leave(); return; }
-#if !WITHOUT_HSA
-                // HSA's keys off with no text box open (a name box that closed some other way):
-                // on again, never stuck
-                var typing = UniversalInputManager.Get();
-                if (Accessibility.AccessibilityMgr.IsTextInputAllowed() && typing != null && !typing.IsTextInputActive())
-                {
-                    Log.Info("mercenaries: text box gone, HSA's keys on again");
-                    Accessibility.AccessibilityMgr.DisallowTextInput();
-                }
-#endif
                 if (scenes.IsTransitioning()) return;
                 string key, title; List<GameButton> items;
                 if (!Build(scenes.GetMode(), out key, out title, out items)) return;   // still loading: the menu stays as it was
@@ -52,9 +42,7 @@ namespace HSAEnhanced
                 {
                     s_screen = new MercScreen();
                     Active++;
-#if WITHOUT_HSA
                     Generic.Yield();
-#endif
                     Focus.PushBase(s_screen);
                 }
                 s_screen.Show(key, title, items);

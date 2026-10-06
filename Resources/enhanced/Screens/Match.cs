@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -713,4 +712,3 @@ namespace HSAEnhanced
     }
 }
 
-#endif

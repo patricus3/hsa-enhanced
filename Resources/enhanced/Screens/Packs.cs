@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -492,4 +491,3 @@ namespace HSAEnhanced
         internal override void Read() { if (m_view != null) Say(First(), true); }
     }
 }
-#endif

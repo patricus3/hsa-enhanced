@@ -12,9 +12,6 @@ namespace HSAEnhanced.Core
         // Hearthstone Access's keys on (true) or off while a game text box is open
         internal static void HsaKeys(bool on)
         {
-#if !WITHOUT_HSA
-            if (on) Accessibility.AccessibilityMgr.DisallowTextInput(); else Accessibility.AccessibilityMgr.AllowTextInput();
-#endif
         }
 
         internal static bool Ask(string prompt, Action<string> done, Action cancelled = null)

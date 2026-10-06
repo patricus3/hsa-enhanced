@@ -1,8 +1,8 @@
 #!/bin/bash
-# Hearthstone Access for macOS installer (unofficial port, speech via the macOS
-# synthesizer through Prism). Builds the mod on this Mac from your installed game
-# and the official HSA release, installs a watcher that injects the mod whenever
-# Battle.net starts, and restarts Battle.net. No game file is modified.
+# Hearthstone Access Enhanced for macOS installer (speech via the macOS synthesizer
+# through Prism). Builds the mod on this Mac from your installed game, installs a
+# watcher that injects the mod whenever Battle.net starts, and restarts Battle.net.
+# No game file is modified. Hearthstone Access itself is not needed.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 H="$HOME/Library/Application Support/HearthstoneAccess"
@@ -12,14 +12,9 @@ LOADER=/Applications/Hearthstone/HearthstoneAccess/libhsaloader.dylib
 say() { echo; echo "== $*"; }
 fail() { echo; echo "ERROR: $*"; echo "Installation aborted. Press Enter to close."; read -r _; exit 1; }
 
-say "Hearthstone Access for Mac - installation"
-# --use-hsa-menus: Hearthstone Access's own menus instead of the enhanced menu system
-mkdir -p "$H"; MENUS=enhanced
-# --without-hsa: our own core only, without Hearthstone Access (most screens are not ours yet)
-MODE=hsa
-for a in "$@"; do [ "$a" = "--use-hsa-menus" ] && MENUS=hsa; [ "$a" = "--without-hsa" ] && MODE=without-hsa; done
-echo "$MENUS" > "$H/menus"; echo "menus: $MENUS"
-echo "$MODE" > "$H/mode"; echo "mode: $MODE"
+say "Hearthstone Access Enhanced for Mac - installation"
+# what older versions kept for Hearthstone Access (the mode and menu choices)
+mkdir -p "$H"; rm -f "$H/menus" "$H/mode"
 [ -d /Applications/Hearthstone/Hearthstone.app ] || fail "Hearthstone not found in /Applications/Hearthstone. Install it with Battle.net first."
 [ -d /Applications/Battle.net.app ] || fail "Battle.net not found in the Applications folder."
 pgrep -x Hearthstone >/dev/null && fail "Hearthstone is running. Quit the game and run the installer again."
@@ -35,23 +30,16 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q '^8\.'; then
 fi
 
 say "Copying mod files"
-mkdir -p "$SRC/downloads"
+mkdir -p "$SRC"
 FILES=""
 for d in Resources zrodla; do [ -f "$HERE/$d/rebuild.sh" ] && { FILES="$HERE/$d"; break; }; done
 [ -n "$FILES" ] || fail "The mod files folder (Resources) was not found next to the installer."
 rsync -a --delete --exclude downloads --exclude work "$FILES/" "$SRC/" || fail "Could not copy the files."
-chmod +x "$SRC/rebuild.sh" "$SRC/hsa-watch.sh" "$SRC/update-hsa.sh"
+chmod +x "$SRC/rebuild.sh" "$SRC/hsa-watch.sh"
+rm -rf "$SRC/downloads"
 
-if [ "$MODE" = without-hsa ]; then
-    say "Building our core for your game version (without Hearthstone Access)"
-    "$SRC/rebuild.sh" || fail "Building the mod failed. Details are above."
-else
-    say "Downloading Hearthstone Access from hearthstoneaccess.com and its source diff from GitHub"
-    "$SRC/update-hsa.sh"; [ $? -eq 2 ] && fail "Could not get a matching Hearthstone Access release and source diff. Try again later, once the HSA developers have published both."
-
-    say "Building the mod for your game version (about a minute)"
-    "$SRC/rebuild.sh" "$SRC/downloads/hsa.zip" || fail "Building the mod failed. Details are above."
-fi
+say "Building the mod for your game version (about a minute)"
+"$SRC/rebuild.sh" || fail "Building the mod failed. Details are above."
 
 say "Installing the watcher that enables the mod whenever Battle.net starts"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/HearthstoneAccess"
@@ -85,7 +73,7 @@ for a in $(pgrep -f 'Agent.app/Contents/MacOS/Agent'); do
 done
 
 echo
-echo "DONE. Hearthstone Access is installed permanently."
+echo "DONE. Hearthstone Access Enhanced is installed permanently."
 echo "Start the game from Battle.net as usual (Play). The mod turns on by itself and speaks with your macOS system voice."
 echo "After a game update the mod rebuilds itself while the game is closed."
 echo "To remove the mod, use Uninstall Hearthstone access.command."

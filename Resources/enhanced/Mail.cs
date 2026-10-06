@@ -3,9 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using HSAEnhanced.Core;
-#if !WITHOUT_HSA
-using Accessibility;
-#endif
 
 namespace HSAEnhanced
 {
@@ -19,26 +16,6 @@ namespace HSAEnhanced
     {
         static readonly HashSet<string> Skip = new HashSet<string> { "IconType", "SubLayout", "Url", "DataModelDisplayName", "ImageType" };
 
-#if !WITHOUT_HSA
-        // start of HSA's MessagePopupDisplay.ReadMessage(data); true: read here
-        internal static bool Read(object popup, object data)
-        {
-            var ui = popup as AccessibleUI;
-            if (ui == null || data == null) return false;
-            var factory = typeof(Hearthstone.InGameMessage.UI.MessagePopupDisplay).Assembly.GetType("Hearthstone.InGameMessage.UI.MessageDataModelFactory");
-            var create = factory == null ? null : factory.GetMethod("CreateDataModel", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            var models = create == null ? null : create.Invoke(null, new[] { data }) as IEnumerable;
-            if (models == null) return false;
-            var lines = new List<string>();
-            foreach (var model in models) Collect(model, lines, 0);
-            Log.Info("message: " + (lines.Count == 0 ? "nothing to read" : string.Join(" | ", lines.ToArray())));
-            if (lines.Count == 0) return false;
-            AccessibilityMgr.ShowUI(ui);
-            AccessibilityMgr.Output(ui, LocalizedText.UI_POPUP, true);
-            foreach (var line in lines) AccessibilityMgr.Output(ui, line);
-            return true;
-        }
-#endif
 
         // the texts of a data model, then those of the models it holds (the items, a launch effect)
         internal static void Collect(object model, List<string> lines, int depth)

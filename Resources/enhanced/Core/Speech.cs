@@ -77,11 +77,7 @@ namespace HSAEnhanced.Core
             {
                 var app = Hearthstone.HearthstoneApplication.Get();
                 if (app == null || app.HasFocus()) return true;
-#if WITHOUT_HSA
                 return true;
-#else
-                return Options.Get().GetBool(Option.ACCESSIBILITY_BACKGROUND_SPEECH, true);
-#endif
             }
             catch { return true; }
         }

@@ -3,9 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using HSAEnhanced.Core;
-#if !WITHOUT_HSA
-using Accessibility;
-#endif
 using Hearthstone;
 using Hearthstone.DataModels;
 using Hearthstone.UI;

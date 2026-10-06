@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using HSAEnhanced.Core;
 using UnityEngine;
@@ -60,4 +59,3 @@ namespace HSAEnhanced
         }
     }
 }
-#endif

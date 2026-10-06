@@ -26,15 +26,10 @@ namespace HSAEnhanced.Core
         internal static void Mouse(GameObject go)
         {
             if (go == null) return;
-#if WITHOUT_HSA
             VirtualMouse.ClickOn(go);
-#else
-            Accessibility.AccessibleInputMgr.Click(go);
-#endif
         }
     }
 
-#if WITHOUT_HSA
     // Without Hearthstone Access: a mouse the game sees through its own input layer
     // (InputCollection). It answers only while it is clicking, so the real mouse keeps working.
     // A click: the position from the next frame on, the button down for one frame, then up.
@@ -99,5 +94,4 @@ namespace HSAEnhanced.Core
         public bool GetMouseButtonDown(int button, out bool value) { value = button == 0 && m_down && !m_wasDown; return Active; }
         public bool GetMouseButtonUp(int button, out bool value) { value = button == 0 && !m_down && m_wasDown; return Active; }
     }
-#endif
 }

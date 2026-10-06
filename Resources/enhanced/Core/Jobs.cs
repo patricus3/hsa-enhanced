@@ -7,11 +7,7 @@ namespace HSAEnhanced.Core
     {
         internal static void Run(IEnumerator routine)
         {
-#if WITHOUT_HSA
             Host.Run(routine);
-#else
-            FallbackWatcher.Run(routine);
-#endif
         }
     }
 }

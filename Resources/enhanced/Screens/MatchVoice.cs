@@ -7,23 +7,15 @@ namespace HSAEnhanced
         {
             get
             {
-#if WITHOUT_HSA
                 return Match.Screen;
-#else
-                return Accessibility.AccessibleGameplay.Get();
-#endif
             }
         }
 
         internal static void Say(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-#if WITHOUT_HSA
             var s = Match.Screen;
             if (s != null) s.Say(text);
-#else
-            Accessibility.AccessibilityMgr.Output(Accessibility.AccessibleGameplay.Get(), text);
-#endif
         }
     }
 }

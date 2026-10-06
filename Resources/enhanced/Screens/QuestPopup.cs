@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using System.Collections.Generic;
 using Hearthstone.DataModels;
@@ -129,4 +128,3 @@ namespace HSAEnhanced
         internal override string Help() { return Str.Join(A("UI_QUEST_NOTIFICATION_POPUP_HELP"), A("PRESS_KEY_TO_CONTINUE", Keys.Enter.Name)); }
     }
 }
-#endif

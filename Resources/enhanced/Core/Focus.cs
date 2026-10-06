@@ -2,9 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-#if !WITHOUT_HSA
-using Accessibility;
-#endif
 using UnityEngine;
 
 namespace HSAEnhanced.Core
@@ -35,20 +32,8 @@ namespace HSAEnhanced.Core
         static readonly List<Entry> s_stack = new List<Entry>();
         static Screen s_lastFocused;
 
-#if WITHOUT_HSA
         static IList HsaUIs { get { return null; } }
         static object ForcedKeyValue { get { return null; } }
-#else
-        static readonly FieldInfo UIs = Ref.Field(typeof(AccessibilityMgr), "s_curUIs");
-        static readonly FieldInfo ForcedKey = Ref.Field(typeof(AccessibilityMgr), "s_forcedKey");
-        static readonly FieldInfo CurScreen = Ref.Field(typeof(AccessibilityMgr), "s_curScreen");
-        static readonly MethodInfo GlobalInput = Ref.Method(typeof(AccessibilityMgr), "HandleGlobalInput", 0);
-
-        static object Static(FieldInfo f) { return f == null ? null : f.GetValue(null); }
-
-        static IList HsaUIs { get { return Static(UIs) as IList; } }
-        static object ForcedKeyValue { get { return Static(ForcedKey); } }
-#endif
 
         internal static void Push(Screen screen)
         {
@@ -132,16 +117,6 @@ namespace HSAEnhanced.Core
         // our last screen closed: Hearthstone Access's screen is read again, as when its own popup closes
         static void RefocusHsa()
         {
-#if !WITHOUT_HSA
-            try
-            {
-                var uis = HsaUIs;
-                if (uis != null && uis.Count > 0) return;
-                var screen = Static(CurScreen);
-                if (screen != null) Ref.Call(screen, "OnGainedFocus");
-            }
-            catch (Exception e) { Log.Error(e); }
-#endif
         }
 
         // every frame: closed when their game screen is gone; read again when focus comes back
@@ -166,23 +141,13 @@ namespace HSAEnhanced.Core
         {
             var top = Top;
             if (top == null) return false;
-#if WITHOUT_HSA
             var input = UniversalInputManager.Get();
             if (input != null && input.IsTextInputActive()) return false;
-#else
-            if (AccessibilityMgr.IsTextInputAllowed()) return false;
-#endif
             if (Input.anyKeyDown && Speech.UsingSapi) Speech.Silence();
             if (Keys.Help.Pressed) { Speech.Say(top.Help()); return true; }
             bool mine = false;
             try { mine = top.HandleKey(); } catch (Exception e) { Log.Error(e); }
-#if WITHOUT_HSA
             return mine;
-#else
-            // Escape (the game menu), F4 (friends), F11/F12 (game speed): Hearthstone Access's for now
-            if (!mine && GlobalInput != null) GlobalInput.Invoke(null, null);
-            return true;
-#endif
         }
 
         // start of AccessibilityMgr.Output: Hearthstone Access's screens are quiet behind ours

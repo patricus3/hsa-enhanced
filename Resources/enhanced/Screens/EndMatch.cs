@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using System.Collections.Generic;
 using Hearthstone.DataModels;
@@ -333,4 +332,3 @@ namespace HSAEnhanced
         static string Text(UberText t) { return t == null ? null : Str.Clean(Ui.ShownText(t.Text)); }
     }
 }
-#endif

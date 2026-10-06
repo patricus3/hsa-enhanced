@@ -1,71 +1,63 @@
 # Hearthstone Access Enhanced (unofficial)
 
-Unofficial build of [Hearthstone Access](https://hearthstoneaccess.com), the mod that makes Hearthstone playable for blind players, for **Windows and macOS**, with speech through [Prism](https://github.com/ethindp/prism) and menus built from what the game shows.
+An accessibility mod that makes Hearthstone playable for blind players, for **Windows and macOS**, with speech through [Prism](https://github.com/ethindp/prism) (your screen reader, or the system voices).
+
+Since version 2.0 it is **our own mod from top to bottom**: it no longer needs or downloads [Hearthstone Access](https://hearthstoneaccess.com). It is built on your machine against your installed game, and everything it says comes from the game's own texts (plus Hearthstone Access's text files, which it ships with its makers' agreement).
 
 This project is not affiliated with Blizzard Entertainment or with the Hearthstone Access developers. Use it at your own risk.
 
-## What it adds to Hearthstone Access
+## What it reads
 
-- **Black Market**: items with price, stock and haggle state, timers, your Bloodstones; buy (with quantity) and haggle through the game's own popup.
-- **Darkmoon Faire Treasures** (lucky draw): the draw with its price, the rewards and which you own.
-- **Menus from the game**: the main menu lists every button the box shows (Shop, Black Market, lucky draw, set rotation, ...); Game Modes and Adventures list every mode and adventure the game has; every Hearthstone Access menu gets the buttons the game shows around it, read through the game's widgets (labels from their text, data models and tooltips; presses through the widget's own events).
-- **Adventure books** (Descent of Dragons, Galakrond, ...): chapters and missions with locked / not owned / completed states; locked missions say why instead of failing on the server.
-- **New year of Hearthstone** (set rotation): the "Year of ..." intro Hearthstone Access turns off is back, as sighted players get it: the box's rotation button, every banner of the clock (Standard, the new year, the button banner) read out with Enter to continue, the format picker with its texts, the rotated sets and the switch-format step.
-- **Death Knight runes**: the deck editor lists the deck's three rune slots with their runes; Enter on one moves to the next rune (Empty, Blood, Frost, Unholy), as a click does.
-- **Options**: Signature Card Appearance (and Language where the game offers it) through Hearthstone Access's own dropdown reader; Miscellaneous and Privacy, and their menus, read from the game's buttons.
-- **Credits**: each year's credits by section, roles with their names, the year buttons, and every credits card as it appears.
-- **Pets** (untested: written without an account that owns a pet): Collection > Browse Collection > Pets lists every pet with its level and favorite state; a pet shows its description, Favorite Pet and its skins (one per level, with Favorite Skin). While a deck is edited, its menu has Pets too: Choose sets the deck's pet or one of its skins, Random and Favorites Only as the deck's pet slot. All words are the game's.
-- **Mercenaries battles**: Enter on a mercenary on your bench puts it into play; Enter on one of your mercenaries on the board opens its abilities (speed, cooldown, text, the one already chosen first); choosing one does what a click does; one that needs a target opens a menu of the targets the game allows (enemies first, with what each has prepared and 2x where your mercenary is strong against it), sent without the mouse, Back cancels. The same menu cancels a chosen ability, reads the equipment and has the Ready / Fight button. After the battle, what your mercenaries got (experience, level ups) is read, and Continue goes on. Enter on an enemy says what it has prepared. Hearthstone Access's crashes in these battles (no heroes, bench cards without a mana gem) are fixed.
-- **Messages**: the mailbox and other in-game messages are read (title, text, the items they list); Hearthstone Access closed them at once.
-- **Fallback menus**: a popup whose Hearthstone Access reader is not reading it gets a menu of its own, and popups read their texts as well as their buttons.
-- **A way back everywhere**: menus without one get the game's own back navigation; a back that does nothing is followed up; as a last resort Back returns to the main menu.
-- **Screens Hearthstone Access does not know** get a menu of what they show.
-- **Fixes**: HSA changes the transplant used to lose (operator-only edits, early returns) are carried over, which fixes e.g. adventure mission screens and the new-year set rotation that kept the Shop, Black Market and lucky draw hidden; a second "find game" request is no longer sent; a hand card is picked up only once the pointer is on it, so the card next to it is no longer played while the hand moves after a draw or discover.
+Every screen is a menu or a list: arrows move, Enter acts, Backspace goes back, F1 tells the keys of the screen you are on.
 
-`--use-hsa-menus` (installer option) keeps Hearthstone Access's own menus; the other additions stay.
+- **Main menu** with every button the box shows, your gold and runestones; **Game Modes**, **Adventures** (books, chapters, missions and why one is locked), **Tavern Brawl**, **Arena** (drafts, redrafts and deck editing), **Battlegrounds** (lobby, hero choice, recruit phase, collection), **Mercenaries**, **Journal** (quests, reward tracks, events, achievements), **Friends**, **Shop** (gold on every page, real money asks twice), **Black Market**, **Darkmoon Faire Treasures**, **Mail**, **Options**, **Credits**.
+- **My Collection**: the book page by page in its class tabs (Tab: next class, number keys: mana, Ctrl+F: search), every card's lines (cost, stats, text, tribe, type, rarity, copies, set), its view (read it, its flavor and related cards, craft or disenchant), I for keyword explanations; Change set, Crafting with its filters and mass disenchant; decks (edit, new with format and recipe, delete, paste, copy), See deck, sideboards (E.T.C., Zilliax), card backs, coins, heroes, pets.
+- **Packs**: the pack list, opening one or several, cards turned one by one or at random, highlights and the summary by rarity.
+- **Matches**: zones and cards read line by line, Tab to the next playable card, Enter to play, attack and target (with the game's sounds and voice lines), placing minions, Discover, Choose One, Rewind (U / J), mulligan, emotes (Space on your hero), Z for your pet and the board's clickable decorations; announcements of what happens (plays, attacks, triggers, damage, deaths, draws, turns, quest progress, the rope) and of the way in (opponent, who goes first, the coin).
+- **End of a match**: the result, rank and stars, win streak, card back progress, reward XP and levels, quests finished.
+- **Popups** of every kind, the Escape menu, quest and achievement toasts, the launch's loading texts.
 
 ## Download
 
-Ready-to-use packages are in [`release/`](release/). There are two versions:
+Ready-to-use packages are in [`release/`](release/) and on the [releases page](../../releases):
 
-- **Hearthstone Access Enhanced** (this branch): **1 Hearthstone access enhanced for Windows.zip**, **2 Hearthstone access enhanced for Mac.zip**, source in **3 Hearthstone access enhanced sourcecode.zip**. Both packages contain the same `Resources`; only the installer differs.
-- **Hearthstone Access for Mac** (plain port, the [`mac-port`](../../tree/mac-port) branch): **4 Hearthstone access for Mac (port).zip**, source in **5 Hearthstone access for Mac (port) sourcecode.zip**. Hearthstone Access exactly as on Windows, without the enhancements, speech through the macOS system voice.
-
-Both Mac versions install into the same place; running one installer replaces the other.
+- **1 Hearthstone access enhanced for Windows.zip**, **2 Hearthstone access enhanced for Mac.zip**, source in **3 Hearthstone access enhanced sourcecode.zip**. Both packages contain the same `Resources`; only the installer differs.
+- **4 Hearthstone access for Mac (port).zip** and **5 … sourcecode.zip** are the older plain port of Hearthstone Access to the Mac (the [`mac-port`](../../tree/mac-port) branch), kept for those who want it.
 
 ## Windows
 
 Requirements: Hearthstone installed with Battle.net, an internet connection during installation. The .NET 8 SDK is downloaded if missing.
 
 1. Quit Hearthstone.
-2. Run **Install Hearthstone access.bat** (it asks for administrator rights; the game lives in Program Files). For Hearthstone Access's own menus: `"Install Hearthstone access.bat" --use-hsa-menus`.
+2. Run **Install Hearthstone access.bat** (it asks for administrator rights; the game lives in Program Files).
 3. When it says DONE, start the game from Battle.net.
 
-Speech goes to your screen reader (NVDA, JAWS and others Prism supports), or to the Windows voices when none is running; it follows a screen reader started or closed while playing. Tolk is not used.
+Speech goes to your screen reader (NVDA, JAWS and others Prism supports), or to the Windows voices when none is running. If you had the official Hearthstone Access installed, repair the game in Battle.net first (Options > Scan and Repair); an earlier version of this mod is replaced as it is.
 
-A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too) and when a new Hearthstone Access release comes out (checked daily). If the game is running at that point (Battle.net starts it right after an update), the new build is made meanwhile and a message on top of the game asks whether to close Hearthstone now and put the mod back (then offers to start the game again); if you say no, it goes back in the moment you close the game yourself. **Uninstall Hearthstone access.bat** removes everything and puts the game's own files back. Logs: `C:\ProgramData\HearthstoneAccess\logs`.
+A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too). If the game is running at that point, the new build is made meanwhile and a message asks whether to close Hearthstone now and put the mod back; if you say no, it goes back in the moment you close the game. **Uninstall Hearthstone access.bat** removes everything and puts the game's own files back. Logs: `C:\ProgramData\HearthstoneAccess\logs`.
 
 ## macOS
 
 Requirements: a Mac with Apple silicon (Intel is untested), Hearthstone in `/Applications/Hearthstone`, Xcode Command Line Tools (the installer asks for them), .NET 8 SDK (downloaded into `~/.dotnet`).
 
 1. Quit Hearthstone.
-2. Open **Install Hearthstone access.command** (or `bash "Install Hearthstone access.command" [--use-hsa-menus]` in Terminal).
+2. Open **Install Hearthstone access.command**.
 3. When it says DONE, start the game from Battle.net.
 
-Speech uses the macOS system voice and its settings (Spoken Content), per language. A watcher rebuilds the mod after a game update or a new Hearthstone Access release. **Uninstall Hearthstone access.command** removes it. Logs: `~/Library/Logs/HearthstoneAccess`.
+Speech uses the macOS system voice and its settings (Spoken Content), per language. A watcher rebuilds the mod after a game update. **Uninstall Hearthstone access.command** removes it. Logs: `~/Library/Logs/HearthstoneAccess`.
 
 ## How it works
 
-No Hearthstone Access or Blizzard code is kept in this repository: the installer downloads the official Hearthstone Access release and its source diff from the [DevTools](https://github.com/antonshusharin/DevTools) repository on the player's machine and builds the mod there.
+No Blizzard code is kept in this repository; the mod is compiled on the player's machine against the installed game's own assemblies.
 
-- `Resources/tools/port`: a Mono.Cecil tool that transplants the methods Hearthstone Access changed into the installed game's `Assembly-CSharp.dll` (matched from the source diff), checks every reference against the game's own assemblies, and hooks the additions in.
-- `Resources/enhanced`: the additions (menus, Black Market, lucky draw, adventure books, fallback menus), compiled against the game's own class library. If a game update breaks them, the plain Hearthstone Access build is installed instead.
-- Windows: `Resources/windows` (install, rebuild and uninstall scripts; `speech` is the Prism bridge that replaces Tolk; `prism` holds `prism.dll`).
+- `Resources/enhanced`: the mod (its core: speech, keys, focus, menus, text input; and every screen), compiled against the game's own class library.
+- `Resources/tools/port`: a Mono.Cecil tool that hooks the mod into the game's `Assembly-CSharp.dll` (the game's input update and its error messages) and checks every reference against the game's own assemblies.
+- `Resources/strings`: Hearthstone Access's text files (`ACCESSIBILITY.txt` per language), reused with its makers' agreement; texts only, no code.
+- Windows: `Resources/windows` (install, rebuild and uninstall scripts; `speech` is the Prism bridge; `prism` holds `prism.dll`).
 - macOS: a loader (`Resources/loader`) serves the mod's files to the game without modifying it; `Resources/tolk` + `Resources/voiceover` speak through Prism's AVSpeech backend; `Resources/hsa-watch.sh` keeps Battle.net running with the loader.
 
 ## Credits
 
-- Hearthstone Access: Guide Dev and the Hearthstone Access community developers.
+- Hearthstone Access (Guide Dev and the Hearthstone Access community developers), whose work this mod grew from and whose texts it reuses.
 - Prism by Ethin Probst, MPL-2.0 (`Resources/windows/prism/LICENSES`, `Resources/voiceover/prism/LICENSE-prism-MPL-2.0.txt`); its third-party notices are in `Resources/windows/prism/NOTICE`.
 - Hearthstone is a trademark of Blizzard Entertainment.

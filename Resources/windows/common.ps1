@@ -51,50 +51,6 @@ function Use-Dotnet {
     $env:PATH = "$local;$env:PATH"; $env:DOTNET_ROOT = $local
 }
 
-# Fetches the Hearthstone Access release (hearthstoneaccess.com) and its source diff (DevTools
-# on GitHub) into downloads\. Nothing of HSA is kept in this repository; the build takes what it
-# needs from these two files on the player's PC. Returns $true when a new pair was stored (a rebuild
-# is due; downloads\rebuild_pending is set). A download that fails or a pair whose versions do not
-# match yet keeps the last good pair; with none at all it throws.
-function Update-Hsa {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $dl = Join-Path $Data 'downloads'
-    New-Item -ItemType Directory -Force $dl | Out-Null
-    $zip = Join-Path $dl 'hsa.zip'; $diff = Join-Path $dl 'hsa.diff.patch'
-    $havePair = (Test-Path $zip) -and (Test-Path $diff)
-    try {
-        Invoke-WebRequest -UseBasicParsing 'https://hearthstoneaccess.com/files/pre_patch.zip' -OutFile "$zip.new"
-        Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/antonshusharin/DevTools/master/diff.patch' -OutFile "$diff.new"
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $archive = [IO.Compression.ZipFile]::OpenRead("$zip.new")
-        try {
-            $entry = $archive.Entries | Where-Object { $_.FullName -eq 'patch/Accessibility/hsa_manifest.json' } | Select-Object -First 1
-            $reader = New-Object IO.StreamReader($entry.Open())
-            $zipver = [string](($reader.ReadToEnd() | ConvertFrom-Json).accessibility_version)
-            $reader.Close()
-        } finally { $archive.Dispose() }
-        $gitver = (Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/antonshusharin/DevTools/master/hsa_version').Content.Trim()
-        Log "HSA version in the release: $zipver, in the repository: $gitver"
-        # right after an HSA update one of the two may lag behind: wait for both
-        if ($zipver -ne $gitver) { throw 'the release and its source diff do not match yet' }
-        $sha = (Get-FileHash -Algorithm SHA256 "$zip.new").Hash + (Get-FileHash -Algorithm SHA256 "$diff.new").Hash
-        $shaFile = Join-Path $dl 'hsa.sha256'
-        if ($havePair -and (Test-Path $shaFile) -and (Get-Content $shaFile -Raw).Trim() -eq $sha) {
-            Remove-Item "$zip.new", "$diff.new" -Force; Log "HSA is up to date ($zipver)"; return $false
-        }
-        Move-Item -Force "$zip.new" $zip; Move-Item -Force "$diff.new" $diff
-        Set-Content $shaFile $sha
-        Set-Content (Join-Path $dl 'rebuild_pending') $zipver
-        Log "HSA $zipver downloaded"
-        return $true
-    } catch {
-        Remove-Item "$zip.new", "$diff.new" -Force -ErrorAction SilentlyContinue
-        if (-not $havePair) { throw "Could not get a matching Hearthstone Access release and source diff ($($_.Exception.Message)). Try again later." }
-        Log "HSA update: $($_.Exception.Message); keeping the release already downloaded"
-        return $false
-    }
-}
-
 function Build([string]$project) {
     & dotnet build -c Release -v q $project | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "building $project failed" }

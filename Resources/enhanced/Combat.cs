@@ -32,10 +32,6 @@ namespace HSAEnhanced
                 if (gs == null || !gs.IsGameCreated()) return false;
                 var mgr = GameMgr.Get();
                 if (mgr != null && mgr.IsBattlegrounds()) return false;
-#if !WITHOUT_HSA
-                // with Hearthstone Access its own reading of Mercenaries battles stays
-                if (mgr != null && mgr.IsMercenaries()) return false;
-#endif
                 return true;
             }
         }
@@ -49,9 +45,6 @@ namespace HSAEnhanced
             if (string.IsNullOrEmpty(text)) return;
             var screen = gameplay as Core.Screen;
             if (screen != null) { screen.Say(text); return; }
-#if !WITHOUT_HSA
-            Accessibility.AccessibilityMgr.Output(gameplay as Accessibility.AccessibleComponent, text);
-#endif
         }
 
         static string L(string key) { return Speech.S(key); }
@@ -159,15 +152,6 @@ namespace HSAEnhanced
         // HSA's focused card follows ours: its Enter, targeting and pointer act on this card
         static void SyncHsa(object gameplay, Card card)
         {
-#if !WITHOUT_HSA
-            if (gameplay is Core.Screen) return;
-            try
-            {
-                Ref.Set(gameplay, "m_cardBeingRead", Accessibility.AccessibleCard.CreateCard(gameplay as Accessibility.AccessibleComponent, card));
-                Ref.Set(gameplay, "m_curZone", Ref.Invoke(card, "GetAccessibleZone"));
-            }
-            catch (Exception e) { Log.Error(e); }
-#endif
         }
 
         static void Clear(object gameplay)

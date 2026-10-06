@@ -715,11 +715,7 @@ namespace HSAEnhanced
     {
         internal static bool IsScreen(object o)
         {
-#if WITHOUT_HSA
             return false;
-#else
-            return o is Accessibility.AccessibleScreen;
-#endif
         }
     }
 

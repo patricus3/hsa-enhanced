@@ -1,4 +1,3 @@
-#if WITHOUT_HSA
 using System;
 using Hearthstone.Progression;
 using UnityEngine;
@@ -94,4 +93,3 @@ namespace HSAEnhanced.Core
         void LateUpdate() { VirtualMouse.Step(); }
     }
 }
-#endif

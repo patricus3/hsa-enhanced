@@ -36,9 +36,7 @@ namespace HSAEnhanced
                 var ui = new DeckTrayUI(tray);
                 if (!ui.Build()) return;
                 s_ui = ui;
-#if WITHOUT_HSA
                 Generic.Yield();
-#endif
                 Focus.PushBase(ui);
                 if (ui.Focused) ui.Read();
             }
