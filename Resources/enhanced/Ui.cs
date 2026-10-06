@@ -15,6 +15,7 @@ namespace HSAEnhanced
         internal Component Target;   // what gets clicked
         internal string Label;
         internal Action Click;
+        internal bool Way;           // the way on from a screen (what Back does there)
         internal GameObject Object { get { return Target.gameObject; } }
 
         // "label [Type at path]" for each button, for the log

@@ -306,21 +306,57 @@ namespace HSAEnhanced
             Show(menu, at, () => ShowQuest(quest, Index));
         }
 
-        // the quest's tile rerolls it when it is there (with its animation and sound); else straight away
+        // the quest's tile rerolls it, as its reroll button does (with its animation and sound): the
+        // game's journal goes to its Quests tab for the tile to be there; with no tile, straight away
         static void Reroll(int questId)
+        {
+            if (RerollByTile(questId)) return;
+            GameTab("QUEST_SELECTED");
+            Core.Jobs.Run(RerollWhenTile(questId));
+        }
+
+        static QuestTile Tile(int questId)
         {
             foreach (var tile in UnityEngine.Object.FindObjectsOfType<QuestTile>())
             {
                 var widget = tile == null ? null : Ref.Get<Hearthstone.UI.Widget>(tile, "m_widget");
                 QuestDataModel model = null;
                 try { model = widget == null ? null : widget.GetDataModel<QuestDataModel>(); } catch { }
-                if (model == null || model.QuestId != questId) continue;
-                Log.Info("journal: reroll quest " + questId + " by its tile");
-                Ref.Call(tile, "RerollQuest");
-                return;
+                if (model != null && model.QuestId == questId) return tile;
             }
-            Log.Info("journal: reroll quest " + questId);
+            return null;
+        }
+
+        static bool RerollByTile(int questId)
+        {
+            var tile = Tile(questId);
+            var widget = tile == null ? null : Ref.Get<Hearthstone.UI.Widget>(tile, "m_widget");
+            if (widget == null) return false;
+            Log.Info("journal: reroll quest " + questId + " by its tile");
+            widget.TriggerEvent("CLICKED_REROLL");
+            return true;
+        }
+
+        static IEnumerator RerollWhenTile(int questId)
+        {
+            var until = Time.unscaledTime + 3f;
+            while (Time.unscaledTime < until)
+            {
+                yield return null;
+                if (RerollByTile(questId)) yield break;
+            }
+            Log.Info("journal: reroll quest " + questId + " (no tile)");
             QuestManager.Get().RerollQuest(questId);
+        }
+
+        // the game's journal behind ours: one of its tabs, as its tab button selects it
+        static void GameTab(string tabEvent)
+        {
+            var popup = UnityEngine.Object.FindObjectOfType<JournalPopup>();
+            var widget = popup == null ? null : Ref.Get<Hearthstone.UI.Widget>(popup, "m_widget");
+            if (widget == null) return;
+            Log.Info("journal: the game's journal to " + tabEvent);
+            widget.TriggerEvent(tabEvent);
         }
 
         // the game's own question before abandoning (the tile asks the same)
@@ -643,9 +679,32 @@ namespace HSAEnhanced
                 });
                 return;
             }
-            Log.Info("journal: claim achievement " + a.ID);
-            AchievementManager.Get().ClaimAchievementReward(a.ID);
+            // as its cell's Claim button does (its animation and sound): the game's journal goes to its
+            // achievements, whose section ours has selected; with no cell, straight away
+            GameTab("ACHIEVEMENT_SELECTED");
+            Core.Jobs.Run(ClaimWhenCell(a.ID));
             RebuildSoon();
+        }
+
+        static IEnumerator ClaimWhenCell(int id)
+        {
+            var until = Time.unscaledTime + 3f;
+            while (Time.unscaledTime < until)
+            {
+                foreach (var cell in UnityEngine.Object.FindObjectsOfType<AchievementCell>())
+                {
+                    var widget = cell == null ? null : Ref.Get<Hearthstone.UI.Widget>(cell, "m_widget");
+                    AchievementDataModel model = null;
+                    try { model = widget == null ? null : widget.GetDataModel<AchievementDataModel>(); } catch { }
+                    if (model == null || model.ID != id) continue;
+                    Log.Info("journal: claim achievement " + id + " by its cell");
+                    widget.TriggerEvent("CODE_CLAIM_ACHIEVEMENT");
+                    yield break;
+                }
+                yield return null;
+            }
+            Log.Info("journal: claim achievement " + id + " (no cell)");
+            AchievementManager.Get().ClaimAchievementReward(id);
         }
         #endregion
 

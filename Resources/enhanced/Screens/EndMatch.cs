@@ -313,22 +313,45 @@ namespace HSAEnhanced
                 foreach (var t in UnityEngine.Object.FindObjectsByType<global::QuestProgressToast>(FindObjectsSortMode.None))
                 {
                     if (!First(t)) continue;
-                    EndMatch.Tell(null, new List<string> { Text(t.m_questTitle), Text(t.m_questDescription), Text(t.m_questProgressCount) }, "toast");
+                    TellIf(new List<string> { Text(t.m_questTitle), Text(t.m_questDescription), Text(t.m_questProgressCount) });
                 }
                 foreach (var t in UnityEngine.Object.FindObjectsByType<QuestToast>(FindObjectsSortMode.None))
                 {
                     if (!First(t)) continue;
-                    EndMatch.Tell(null, new List<string> { EndMatch.A("TOAST_QUEST_TOAST_TITLE"), Text(t.m_questName), Text(t.m_requirement) }, "toast");
+                    TellIf(new List<string> { EndMatch.A("TOAST_QUEST_TOAST_TITLE"), Text(t.m_questName), Text(t.m_requirement) });
                 }
                 foreach (var t in UnityEngine.Object.FindObjectsByType<AchievementToast>(FindObjectsSortMode.None))
                 {
                     if (!First(t)) continue;
-                    EndMatch.Tell(null, new List<string> { Text(Ref.Get<UberText>(t, "m_text")) }, "toast");
+                    TellIf(new List<string> { Text(Ref.Get<UberText>(t, "m_text")) });
+                }
+                // a Mercenaries task done (or progressed): the task as its card shows it
+                foreach (var t in UnityEngine.Object.FindObjectsByType<Hearthstone.Progression.LettuceVillageTaskToast>(FindObjectsSortMode.None))
+                {
+                    var w = t == null ? null : t.GetComponent<Hearthstone.UI.WidgetTemplate>();
+                    MercenaryVillageTaskItemDataModel task = null;
+                    try { task = w == null ? null : w.GetDataModel<MercenaryVillageTaskItemDataModel>(); } catch { }
+                    if (task == null || string.IsNullOrEmpty(task.Title) || !First(t)) continue;
+                    bool done = (int)task.TaskStatus == 3 || (task.ProgressNeeded > 0 && task.Progress >= task.ProgressNeeded);
+                    TellIf(new List<string> { done ? Str.Word("GLUE_LETTUCE_VILLAGE_TASK_COMPLETE") : null, Campfire.Describe(task) });
                 }
             }
             catch (Exception e) { Log.Error(e); }
         }
 
-        static string Text(UberText t) { return t == null ? null : Str.Clean(Ui.ShownText(t.Text)); }
+        // a text the toast shows (not one it hides, nor the prefab's "Uber Text" placeholder)
+        static string Text(UberText t)
+        {
+            if (t == null || !t.gameObject.activeInHierarchy || t.isHidden()) return null;
+            var text = Str.Clean(Ui.ShownText(t.Text));
+            return string.IsNullOrEmpty(text) || text.StartsWith("Uber Text", StringComparison.OrdinalIgnoreCase) ? null : text;
+        }
+
+        // a toast with nothing real to say stays quiet
+        static void TellIf(List<string> lines)
+        {
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            if (lines.Count > 1 || (lines.Count == 1 && lines[0] != EndMatch.A("TOAST_QUEST_TOAST_TITLE"))) EndMatch.Tell(null, lines, "toast");
+        }
     }
 }

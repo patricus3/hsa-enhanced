@@ -85,7 +85,12 @@ namespace HSAEnhanced
             bool newStep = key != m_key;
             if (!newStep && sig == m_signature) return true;
             var at = m_menu == null || newStep ? 0 : m_menu.Index;
-            var menu = new Menu(this, title, null);
+            // Backspace: the way on the screen offers (Continue, Done / Next, Open)
+            GameButton way = null;
+            foreach (var b in items) if (b.Way) way = b;
+            // reward boxes still closed and no Done yet: Back opens the next one
+            if (way == null) foreach (var b in items) if (b.Target is RewardPackage) { way = b; break; }
+            var menu = new Menu(this, title, way == null ? (Action)(() => Say(Str.Unavailable)) : () => { Log.Info("rewards: back = " + way.Label); way.Click(); });
             foreach (var b in items) { var click = b.Click; menu.AddOption(b.Label, () => click()); }
             menu.Index = Math.Max(0, Math.Min(at, items.Count - 1));
             m_menu = menu;
@@ -114,7 +119,7 @@ namespace HSAEnhanced
             var desc = chest.m_descText == null || !chest.m_descText.activeInHierarchy ? null : chest.m_descText.GetComponent<UberText>();
             if (desc != null) { var t = Str.Clean(Ui.ShownText(desc.Text)); if (!string.IsNullOrEmpty(t)) items.Add(new GameButton { Target = chest, Label = t, Click = () => Say(t) }); }
             var c = chest;
-            items.Add(new GameButton { Target = chest.m_rewardChest, Label = Str.Word("GLUE_LOADINGSCREEN_OPEN_APP_STORE"), Click = () =>
+            items.Add(new GameButton { Target = chest.m_rewardChest, Way = true, Label = Str.Word("GLUE_LOADINGSCREEN_OPEN_APP_STORE"), Click = () =>
             {
                 if (m_opening) return;
                 m_opening = true;
@@ -163,7 +168,7 @@ namespace HSAEnhanced
                     var button = b;
                     var label = Str.Clean(Ui.LabelOf(button));
                     if (string.IsNullOrEmpty(label)) label = Str.Word(button == boxes.m_DoneButton ? "GLOBAL_DONE" : "GLOBAL_BUTTON_NEXT");
-                    items.Add(new GameButton { Target = button, Label = label, Click = () => { Log.Info("rewards: " + label); button.TriggerRelease(); } });
+                    items.Add(new GameButton { Target = button, Way = true, Label = label, Click = () => { Log.Info("rewards: " + label); button.TriggerRelease(); } });
                 }
             }
             return true;
@@ -190,7 +195,7 @@ namespace HSAEnhanced
                 items.Add(new GameButton { Target = reward, Label = text, Click = () => Say(text) });
             }
             var r = reward;
-            items.Add(new GameButton { Target = reward, Label = Str.Word("GLOBAL_CONTINUE"), Click = () =>
+            items.Add(new GameButton { Target = reward, Way = true, Label = Str.Word("GLOBAL_CONTINUE"), Click = () =>
             {
                 Log.Info("rewards: continue past " + r.name);
                 if (r.m_clickCatcher != null && r.m_clickCatcher.gameObject.activeInHierarchy) r.m_clickCatcher.TriggerRelease();
