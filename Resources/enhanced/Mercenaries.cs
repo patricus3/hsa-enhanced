@@ -140,7 +140,7 @@ namespace HSAEnhanced
             var label = Ui.LabelOf(button);
             if (label.Length == 0) label = fallbackLabel;
             var b = button;
-            Item(items, button, label, () => { Log.Info("mercenaries: " + label); b.TriggerRelease(); });
+            Item(items, button, label, () => { Log.Info("mercenaries: " + label); Core.Click.Peg(b); });
         }
 
         static void BackItem(List<GameButton> items, Component target)
@@ -377,7 +377,7 @@ namespace HSAEnhanced
                     Item(items, sub, label, () =>
                     {
                         Log.Info("mercenaries: travel point " + label);
-                        button.TriggerRelease();
+                        Core.Click.Peg(button);
                         var info = Ref.Get(portal, "m_dataModel") as MercenaryVillageZonePortalDataModel;
                         if (info != null) Say(Str.Join(Str.Clean(info.SelectedZoneName), Str.Clean(info.SelectedZoneDescription), info.IsSelectedModeLocked ? Str.Clean(info.SelectedModeLockedReason) : null));
                     });
@@ -615,7 +615,7 @@ namespace HSAEnhanced
         {
             // the game's text box is open (a party's name): the keys are typing
             var input = UniversalInputManager.Get();
-            if (input != null && input.IsTextInputActive()) return false;
+            if (input != null && Focus.Typing) return false;
             return m_menu != null && m_menu.HandleKey();
         }
 

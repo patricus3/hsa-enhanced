@@ -9,18 +9,21 @@ namespace HSAEnhanced
     {
         // start of UniversalInputManager.UpdateInput(); true: the key press was ours (the game's
         // keyboard handling is skipped this frame). F4 opens and closes the friends list.
+        // the frame the game's input update last ran in (Host takes the keys when it does not run)
+        internal static int KeysFrame = -1;
+
         public static bool StandaloneKeys()
         {
+            KeysFrame = UnityEngine.Time.frameCount;
             try
             {
                 Host.Ensure();
-                var input = UniversalInputManager.Get();
-                if (input != null && input.IsTextInputActive()) return false;
+                if (Focus.Typing) return false;
                 if (Focus.HandleKeys()) return true;
                 if (Core.Key.Of(UnityEngine.KeyCode.F4).Pressed && !(Focus.Top is PanelUI && Dialogs.Shown != null))
                 {
                     var button = BnetBarFriendButton.Get();
-                    if (button != null) { button.TriggerRelease(); return true; }
+                    if (button != null) { Core.Click.Peg(button); return true; }
                 }
                 return false;
             }

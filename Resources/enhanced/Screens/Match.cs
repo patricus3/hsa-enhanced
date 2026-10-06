@@ -158,7 +158,7 @@ namespace HSAEnhanced
             var end = EndGameScreen.Get();
             if (gs.IsGameOver() || (end != null && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy))
             {
-                if (Keys.Enter.Pressed && end != null && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy) { Log.Info("match: continue"); end.m_hitbox.TriggerRelease(); return true; }
+                if (Keys.Enter.Pressed && end != null && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy) { Log.Info("match: continue"); Core.Click.Peg(end.m_hitbox); return true; }
                 return Combat.StatusKeys(this);
             }
             if (m_mode == Mode.Mulligan) return MulliganKeys();
@@ -403,7 +403,7 @@ namespace HSAEnhanced
                 var hud = RewindUIManager.Get();
                 var button = hud == null ? null : Ref.Get<UIBButton>(hud, Bind.REWIND.Pressed ? "m_rewindButton" : "m_keepButton");
                 Log.Info("match: " + (Bind.REWIND.Pressed ? "rewind" : "keep"));
-                if (button != null && button.gameObject.activeInHierarchy) button.TriggerRelease();
+                if (button != null && button.gameObject.activeInHierarchy) Core.Click.Peg(button);
                 return true;
             }
             if (ListKeys(Keys.Tab.Pressed && GS.IsInSubOptionMode())) return true;
@@ -416,7 +416,7 @@ namespace HSAEnhanced
                 {
                     var hud = RewindUIManager.Get();
                     var button = hud == null ? null : Ref.Get<UIBButton>(hud, e.GetCardId() == RewindUIManager.REWIND_CHOICE_CARDID ? "m_rewindButton" : "m_keepButton");
-                    if (button != null && button.gameObject.activeInHierarchy) { button.TriggerRelease(); return true; }
+                    if (button != null && button.gameObject.activeInHierarchy) { Core.Click.Peg(button); return true; }
                 }
                 if (GS.IsInSubOptionMode()) InputManager.Get().HandleClickOnSubOption(e);
                 else InputManager.Get().DoNetworkResponse(e);
@@ -426,13 +426,13 @@ namespace HSAEnhanced
             if (Keys.Tab.Pressed && !GS.IsInSubOptionMode())
             {
                 var toggle = ChoiceCardMgr.Get().GetToggleButton();
-                if (toggle != null && toggle.gameObject.activeInHierarchy) { toggle.TriggerRelease(); return true; }
+                if (toggle != null && toggle.gameObject.activeInHierarchy) { Core.Click.Peg(toggle); return true; }
             }
             if (Bind.REROLL_CHOICE.Pressed)
             {
                 var reroll = UnityEngine.Object.FindObjectOfType<RerollUIManager>();
                 var button = reroll == null ? null : Ref.Get(reroll, "m_rerollButton") as PegUIElement;
-                if (button != null && button.gameObject.activeInHierarchy) { button.TriggerRelease(); return true; }
+                if (button != null && button.gameObject.activeInHierarchy) { Core.Click.Peg(button); return true; }
             }
             return Combat.StatusKeys(this) || Keys.Back.Pressed;
         }
@@ -505,7 +505,7 @@ namespace HSAEnhanced
             if (Keys.Enter.Pressed)
             {
                 var button = Ref.Get(MulliganManager.Get(), "mulliganButton") as NormalButton;
-                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); GameStart.Confirmed = true; button.TriggerRelease(); m_mode = Mode.Browse; m_list.Clear(); }
+                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); GameStart.Confirmed = true; Core.Click.Peg(button); m_mode = Mode.Browse; m_list.Clear(); }
                 return true;
             }
             if (Keys.Tab.Pressed) { m_at = (m_at + 1) % m_list.Count; ReadListItem(); return true; }

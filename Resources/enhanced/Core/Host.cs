@@ -91,6 +91,15 @@ namespace HSAEnhanced.Core
             Generic.Claims.Add(go => Journal.Active && go.GetComponentInChildren<JournalPopup>(true) != null || go.GetComponentInParent<JournalPopup>() != null);
         }
 
-        void LateUpdate() { VirtualMouse.Step(); }
+        void LateUpdate()
+        {
+            VirtualMouse.Step();
+            // the game skipped its input update this frame (a screen of its own holds it): our keys still work
+            if (Input.anyKeyDown && Hooks.KeysFrame != Time.frameCount && Focus.Top != null)
+            {
+                Log.Once("keys: the game's input update did not run; " + Focus.Top.GetType().Name + " takes the keys");
+                try { if (!Focus.Typing) Focus.HandleKeys(); } catch (Exception e) { Log.Error(e); }
+            }
+        }
     }
 }

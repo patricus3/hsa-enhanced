@@ -343,7 +343,7 @@ namespace HSAEnhanced
             title = Str.Join(texts.ToArray());
             var ok = auth.m_okButton;
             if (ok != null && ok.gameObject.activeInHierarchy && ok.IsEnabled())
-                items.Add(new GameButton { Target = ok, Label = Str.Word("GLOBAL_OK"), Click = () => ok.TriggerRelease() });
+                items.Add(new GameButton { Target = ok, Label = Str.Word("GLOBAL_OK"), Click = () => Core.Click.Peg(ok) });
             else
             {
                 var said = title;

@@ -25,8 +25,32 @@ namespace HSAEnhanced
         internal static RewardBoxesDisplay Boxes()
         {
             foreach (var b in UnityEngine.Object.FindObjectsByType<RewardBoxesDisplay>(FindObjectsSortMode.None))
-                if (b != null && b.gameObject.activeInHierarchy && !b.IsClosing) return b;
+                if (b != null && b.gameObject.activeInHierarchy && !b.IsClosing && Started(b)) return b;
             return null;
+        }
+
+        // the game has put its boxes (or the rewards they gave) out: before that the display is only
+        // loaded, with its box templates hidden (Arena loads it before its chest is claimed)
+        static bool Started(RewardBoxesDisplay b)
+        {
+            var objects = Ref.Get<GameObject[]>(b, "m_RewardObjects");
+            if (objects != null && objects.Length > 0) return true;
+            return Packages(b).Count > 0;
+        }
+
+        // the boxes the game put out (not its templates)
+        internal static List<RewardPackage> Packages(RewardBoxesDisplay b)
+        {
+            var list = new List<RewardPackage>();
+            var made = Ref.Get<List<GameObject>>(b, "m_rewardPackageInstances");
+            if (made == null) return list;
+            foreach (var go in made)
+            {
+                var p = go == null || !go.activeInHierarchy ? null : go.GetComponent<RewardPackage>();
+                if (p != null && p.enabled) list.Add(p);
+            }
+            list.Sort((x, y) => x.m_RewardIndex.CompareTo(y.m_RewardIndex));
+            return list;
         }
 
         // a single reward on show (a pack, gold, a card, a card back...): it waits for a click
@@ -124,7 +148,7 @@ namespace HSAEnhanced
                 if (m_opening) return;
                 m_opening = true;
                 Log.Info("rewards: open the chest");
-                c.m_rewardChest.TriggerRelease();
+                Core.Click.Peg(c.m_rewardChest);
             } });
             return true;
         }
@@ -133,22 +157,21 @@ namespace HSAEnhanced
         {
             m_opening = false;
             var rewards = Ref.Get<List<RewardData>>(boxes, "m_rewards") ?? new List<RewardData>();
-            var packages = new List<RewardPackage>();
-            foreach (var p in boxes.GetComponentsInChildren<RewardPackage>())
-                if (p != null && p.gameObject.activeInHierarchy) packages.Add(p);
+            var packages = RewardChest.Packages(boxes);
             int page = Ref.Get<int>(boxes, "m_currentPageNum");
             key = "boxes:" + page;
             title = A("UI_REWARD_TYPE_REWARD_PACKAGE");
-            var closed = new HashSet<int>();
+            // a reward is opened once the game shows its reward object
+            var shownObjects = Ref.Get<GameObject[]>(boxes, "m_RewardObjects");
+            Func<int, bool> opened = i => shownObjects != null && i >= 0 && i < shownObjects.Length && shownObjects[i] != null && shownObjects[i].activeInHierarchy;
             for (int i = 0; i < packages.Count; i++)
             {
                 var p = packages[i];
-                closed.Add(p.m_RewardIndex);
-                int n = i + 1;
+                int n = p.m_RewardIndex + 1;
                 items.Add(new GameButton { Target = p, Label = Str.Join(A("UI_REWARD_TYPE_REWARD_PACKAGE"), n.ToString()), Click = () =>
                 {
                     Log.Info("rewards: open box " + p.m_RewardIndex);
-                    p.TriggerRelease();
+                    Core.Click.Peg(p);
                     var r = p.m_RewardIndex >= 0 && p.m_RewardIndex < rewards.Count ? rewards[p.m_RewardIndex] : null;
                     if (r != null) Say(Describe(r));
                 } });
@@ -156,7 +179,7 @@ namespace HSAEnhanced
             // what the opened boxes gave
             for (int i = 0; i < rewards.Count; i++)
             {
-                if (closed.Contains(i) || rewards[i] == null) continue;
+                if (!opened(i) || rewards[i] == null) continue;
                 var text = Describe(rewards[i]);
                 if (!string.IsNullOrEmpty(text)) items.Add(new GameButton { Target = boxes, Label = text, Click = () => Say(text) });
             }
@@ -168,7 +191,7 @@ namespace HSAEnhanced
                     var button = b;
                     var label = Str.Clean(Ui.LabelOf(button));
                     if (string.IsNullOrEmpty(label)) label = Str.Word(button == boxes.m_DoneButton ? "GLOBAL_DONE" : "GLOBAL_BUTTON_NEXT");
-                    items.Add(new GameButton { Target = button, Way = true, Label = label, Click = () => { Log.Info("rewards: " + label); button.TriggerRelease(); } });
+                    items.Add(new GameButton { Target = button, Way = true, Label = label, Click = () => { Log.Info("rewards: " + label); Core.Click.Peg(button); } });
                 }
             }
             return true;
@@ -198,7 +221,7 @@ namespace HSAEnhanced
             items.Add(new GameButton { Target = reward, Way = true, Label = Str.Word("GLOBAL_CONTINUE"), Click = () =>
             {
                 Log.Info("rewards: continue past " + r.name);
-                if (r.m_clickCatcher != null && r.m_clickCatcher.gameObject.activeInHierarchy) r.m_clickCatcher.TriggerRelease();
+                if (r.m_clickCatcher != null && r.m_clickCatcher.gameObject.activeInHierarchy) Core.Click.Peg(r.m_clickCatcher);
                 else Core.Click.Mouse(r.gameObject);
             } });
             return true;

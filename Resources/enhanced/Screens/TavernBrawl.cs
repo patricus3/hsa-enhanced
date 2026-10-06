@@ -126,16 +126,16 @@ namespace HSAEnhanced
             else if (Shown(display.m_playButton) && display.m_playButton.IsEnabled())
             {
                 var label = Text(display.m_playButton.m_newPlayButtonText);
-                Add(items, display.m_playButton, string.IsNullOrEmpty(label) ? Str.Word("GLUE_BRAWL") : label, () => { Log.Info("brawl: play"); display.m_playButton.TriggerRelease(); });
+                Add(items, display.m_playButton, string.IsNullOrEmpty(label) ? Str.Word("GLUE_BRAWL") : label, () => { Log.Info("brawl: play"); Core.Click.Peg(display.m_playButton); });
             }
             else if (Shown(display.m_playButton) && !TBM.HasValidDeckForCurrent() && mission != null && mission.canCreateDeck && TBM.HasCreatedDeck())
                 Add(items, anchor, Str.Join(Str.Word("GLUE_BRAWL"), Str.Unavailable), null);
             if (Shown(display.m_createDeckButton))
-                Add(items, display.m_createDeckButton, Str.Word("GLUE_COLLECTION_NEW_DECK"), () => { Log.Info("brawl: create deck"); display.m_createDeckButton.TriggerRelease(); });
+                Add(items, display.m_createDeckButton, Str.Word("GLUE_COLLECTION_NEW_DECK"), () => { Log.Info("brawl: create deck"); Core.Click.Peg(display.m_createDeckButton); });
             if (Shown(display.m_editDeckButton) && display.m_editDeckButton.IsEnabled())
             {
                 var label = Text(display.m_editText);
-                Add(items, display.m_editDeckButton, string.IsNullOrEmpty(label) ? Str.Word("GLUE_EDIT") : label, () => { Log.Info("brawl: edit deck"); display.m_editDeckButton.TriggerRelease(); });
+                Add(items, display.m_editDeckButton, string.IsNullOrEmpty(label) ? Str.Word("GLUE_EDIT") : label, () => { Log.Info("brawl: edit deck"); Core.Click.Peg(display.m_editDeckButton); });
             }
             DeckLine(items, anchor);
             // a session's locked deck can be retired: the game's question, Enter twice
@@ -185,8 +185,8 @@ namespace HSAEnhanced
                 var label = Str.Clean(Ui.LabelOf(b));
                 if (string.IsNullOrEmpty(label)) label = b == store.m_buyWithGoldButton ? Str.Word("GLUE_SHOP_GOLD") : Str.Word("GLUE_TAVERN_BRAWL_PRERELEASE_CONTINUE");
                 if (b == store.m_buyWithMoneyButton || b == store.m_buyWithVCButton)
-                    Add(items, b, label, () => Twice("buy " + b.name, label, () => { Log.Info("brawl: buy " + label); b.TriggerRelease(); }));
-                else Add(items, b, label, () => { Log.Info("brawl: " + label); b.TriggerRelease(); });
+                    Add(items, b, label, () => Twice("buy " + b.name, label, () => { Log.Info("brawl: buy " + label); Core.Click.Peg(b); }));
+                else Add(items, b, label, () => { Log.Info("brawl: " + label); Core.Click.Peg(b); });
             }
             return true;
         }
@@ -204,9 +204,9 @@ namespace HSAEnhanced
             Add(items, root, Str.Join(rewards.ToArray()), null);
             foreach (var t in Ui.TextsUnder(root.gameObject)) Add(items, root, t.Value, null);
             if (chest != null && Shown(chest.m_rewardChest))
-                Add(items, chest.m_rewardChest, Str.Word("GLUE_LOADINGSCREEN_OPEN_APP_STORE"), () => { Log.Info("brawl: open the chest"); chest.m_rewardChest.TriggerRelease(); });
+                Add(items, chest.m_rewardChest, Str.Word("GLUE_LOADINGSCREEN_OPEN_APP_STORE"), () => { Log.Info("brawl: open the chest"); Core.Click.Peg(chest.m_rewardChest); });
             if (heroic != null && Shown(heroic.m_DoneButton))
-                Add(items, heroic.m_DoneButton, Str.Word("GLOBAL_DONE"), () => { Log.Info("brawl: rewards done"); heroic.m_DoneButton.TriggerRelease(); });
+                Add(items, heroic.m_DoneButton, Str.Word("GLOBAL_DONE"), () => { Log.Info("brawl: rewards done"); Core.Click.Peg(heroic.m_DoneButton); });
             return true;
         }
 
@@ -235,7 +235,7 @@ namespace HSAEnhanced
         {
             Log.Info("brawl: back");
             var store = TavernBrawlStore.Get();
-            if (store != null && store.IsOpen() && Shown(store.m_backButton)) { store.m_backButton.TriggerRelease(); return; }
+            if (store != null && store.IsOpen() && Shown(store.m_backButton)) { Core.Click.Peg(store.m_backButton); return; }
             Navigation.GoBack();
         }
 

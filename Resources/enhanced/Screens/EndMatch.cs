@@ -201,7 +201,7 @@ namespace HSAEnhanced
             if (Keys.Enter.Pressed || Keys.Space.Pressed)
             {
                 var hit = Screen.m_hitbox;
-                if (hit != null && hit.gameObject.activeInHierarchy) { Log.Info("endscreen: continue"); hit.TriggerRelease(); }
+                if (hit != null && hit.gameObject.activeInHierarchy) { Log.Info("endscreen: continue"); Core.Click.Peg(hit); }
                 return true;
             }
             if (Keys.Right.Pressed || Keys.Tab.Pressed) { if (m_at + 1 < n) Move(m_at + 1); return true; }

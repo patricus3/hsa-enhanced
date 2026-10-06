@@ -336,7 +336,7 @@ namespace HSAEnhanced
             if (display.m_craftingModeButton != null && display.m_craftingModeButton.gameObject.activeInHierarchy)
                 Add(items, display, Str.Word("GLUE_COLLECTION_CRAFTING_MODE_SHORT"), () =>
                 {
-                    if (!display.InCraftingMode()) { Log.Info("collection: crafting on"); display.m_craftingModeButton.TriggerRelease(); }
+                    if (!display.InCraftingMode()) { Log.Info("collection: crafting on"); Core.Click.Peg(display.m_craftingModeButton); }
                     Go("crafting");
                 });
             if (SetTray(display) != null) Add(items, display, A("SCREEN_COLLECTION_MANAGER_CHANGE_SET"), () => OpenSets(display, "main"));
@@ -366,7 +366,7 @@ namespace HSAEnhanced
             if (any) Add(items, display, A("SCREEN_COLLECTION_MANAGER_EDIT_DECK"), () => Go("editlist"));
             var content = Tray.GetDecksContent();
             if (content != null && content.m_newDeckButton != null && content.m_newDeckButton.IsEnabled())
-                Add(items, display, Str.Word("GLUE_COLLECTION_NEW_DECK"), () => { Log.Info("collection: new deck"); content.m_newDeckButton.TriggerRelease(); });
+                Add(items, display, Str.Word("GLUE_COLLECTION_NEW_DECK"), () => { Log.Info("collection: new deck"); Core.Click.Peg(content.m_newDeckButton); });
             if (any) Add(items, display, A("SCREEN_COLLECTION_MANAGER_DELETE_DECK"), () => Go("deletelist"));
             Add(items, display, Str.Word("GLUE_COLLECTION_DECK_PASTE_TOOLTIP_HEADLINE"), () => { Log.Info("collection: paste a deck"); display.PasteFromClipboardIfValidOrShowStatusMessage(); });
             return true;
@@ -423,7 +423,7 @@ namespace HSAEnhanced
                     Name = lines[0],
                     Lines = () => lines,
                     Enter = delete
-                        ? (Action)(() => { if (b.m_deleteButton == null) { Speech.Say(A("GLOBAL_CANNOT_DO_THAT")); return; } Log.Info("collection: delete deck " + deck.Name); b.m_deleteButton.TriggerRelease(); })
+                        ? (Action)(() => { if (b.m_deleteButton == null) { Speech.Say(A("GLOBAL_CANNOT_DO_THAT")); return; } Log.Info("collection: delete deck " + deck.Name); Core.Click.Peg(b.m_deleteButton); })
                         : () => { Log.Info("collection: open deck " + deck.Name); b.TriggerTap(); },
                 });
             }
@@ -439,7 +439,7 @@ namespace HSAEnhanced
                 Add(items, display, Str.Word("GLUE_COLLECTION_CRAFTING_DISENCHANT_BUTTON_TEXT"), () =>
                 {
                     Log.Info("collection: mass disenchant page");
-                    tray.m_massDisenchantButton.TriggerRelease();
+                    Core.Click.Peg(tray.m_massDisenchantButton);
                     Go("massdisenchant");
                 });
             Add(items, display, A("SCREEN_COLLECTION_MANAGER_CRAFTING_CRAFT_CARDS"), () => OpenBook("crafting"));
@@ -883,7 +883,7 @@ namespace HSAEnhanced
             if (deck.GetTotalCardCount() < CM.GetDeckSize())
                 Add(items, display, Str.Word("GLUE_COLLECTION_DECK_COMPELTE_BUTTON"), () => { Log.Info("collection: complete the deck"); tray.CompleteMyDeckButtonPress(); });
             if (tray.m_doneButton != null)
-                Add(items, display, Str.Word("GLOBAL_BACK"), () => { Log.Info("collection: done"); tray.m_doneButton.TriggerRelease(); });
+                Add(items, display, Str.Word("GLOBAL_BACK"), () => { Log.Info("collection: done"); Core.Click.Peg(tray.m_doneButton); });
             return true;
         }
 
@@ -1202,14 +1202,14 @@ namespace HSAEnhanced
             {
                 m_templateArmed = index;
                 Log.Info("collection: recipe " + index);
-                button.TriggerRelease();
+                Core.Click.Peg(button);
                 Speech.Say(A(custom ? "SCREEN_COLLECTION_MANAGER_CUSTOM_DECK_CHOOSE_HELP" : "SCREEN_COLLECTION_MANAGER_RECIPE_CHOOSE_HELP", Keys.Enter.Name, Keys.Back.Name), true);
                 return;
             }
             m_templateArmed = -1;
             if (picker.m_chooseButton == null || !picker.m_chooseButton.IsEnabled()) { Speech.Say(A("GLOBAL_CANNOT_DO_THAT"), true); return; }
             Log.Info("collection: make the deck from recipe " + index);
-            picker.m_chooseButton.TriggerRelease();
+            Core.Click.Peg(picker.m_chooseButton);
         }
 
         // ---- one card: read it, its flavor, craft or disenchant it (the game's crafting view) ------
@@ -1278,7 +1278,7 @@ namespace HSAEnhanced
                 if (owned > 0 && value != null && ui.m_buttonDisenchant != null && ui.m_buttonDisenchant.gameObject.activeInHierarchy)
                 {
                     var b = ui.m_buttonDisenchant;
-                    Add(items, b, A("SCREEN_COLLECTION_MANAGER_CRAFTING_DISENCHANT_CARD_FOR_N_DUST", value.GetSellValue()), () => { Log.Info("collection: disenchant " + id); b.TriggerRelease(); });
+                    Add(items, b, A("SCREEN_COLLECTION_MANAGER_CRAFTING_DISENCHANT_CARD_FOR_N_DUST", value.GetSellValue()), () => { Log.Info("collection: disenchant " + id); Core.Click.Peg(b); });
                 }
                 if (value != null && ui.m_buttonCreate != null && ui.m_buttonCreate.gameObject.activeInHierarchy)
                 {
@@ -1290,7 +1290,7 @@ namespace HSAEnhanced
                         if (can == CraftingManager.CanCraftCardResult.TooManyCopies) { Speech.Say(A("SCREEN_COLLECTION_MANAGER_CRAFTING_CRAFT_CARD_ERROR_CARD_LIMIT_REACHED"), true); return; }
                         if (can != CraftingManager.CanCraftCardResult.CanCraft && can != CraftingManager.CanCraftCardResult.CanUpgrade) { Speech.Say(A("GLOBAL_CANNOT_DO_THAT"), true); return; }
                         Log.Info("collection: craft " + id);
-                        b.TriggerRelease();
+                        Core.Click.Peg(b);
                     });
                 }
             }
@@ -1346,7 +1346,7 @@ namespace HSAEnhanced
                     }
                     m_armedUntil = 0;
                     Log.Info("collection: mass disenchant " + total);
-                    md.m_disenchantButton.TriggerRelease();
+                    Core.Click.Peg(md.m_disenchantButton);
                     Jobs.Run(After(2f, () => { Speech.Say(A("SCREEN_COLLECTION_MANAGER_CRAFTING_DISENCHANT_DONE")); display.SetViewMode(CollectionUtils.ViewMode.CARDS); Go("crafting"); }));
                 } });
             }
@@ -1552,7 +1552,7 @@ namespace HSAEnhanced
                 case "browse": case "decks": Go("main"); return;
                 case "editlist": case "deletelist": Go("decks"); return;
                 case "crafting":
-                    if (display.InCraftingMode() && display.m_craftingModeButton != null) { Log.Info("collection: crafting off"); display.m_craftingModeButton.TriggerRelease(); }
+                    if (display.InCraftingMode() && display.m_craftingModeButton != null) { Log.Info("collection: crafting off"); Core.Click.Peg(display.m_craftingModeButton); }
                     Go("main"); return;
                 case "craftfilters": Go("crafting"); return;
                 case "sets": Go(m_setFrom); return;

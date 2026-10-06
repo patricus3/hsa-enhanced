@@ -154,7 +154,7 @@ namespace HSAEnhanced
                 if (play != null && play.IsEnabled())
                 {
                     var label = Ui.LabelOf(play);
-                    Add(items, play, label.Length > 0 ? label : Str.Word("GLOBAL_PLAY"), () => { Log.Info("arena: play"); play.TriggerRelease(); });
+                    Add(items, play, label.Length > 0 ? label : Str.Word("GLOBAL_PLAY"), () => { Log.Info("arena: play"); Core.Click.Peg(play); });
                 }
                 Add(items, anchor, Str.Word("GLUE_ARENA_RETIRE_POPUP_YES"), () => { Log.Info("arena: retire"); display.HandleArenaDraftScreenEvent("RETIRE_PRESSED"); });
                 DeckItems(items, anchor);

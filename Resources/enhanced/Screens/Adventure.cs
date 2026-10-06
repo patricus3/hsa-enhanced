@@ -157,7 +157,7 @@ namespace HSAEnhanced
             var tray = trays.Length == 0 ? null : trays[0];
             var choose = tray == null ? null : tray.GetComponentInChildren<PlayButton>(false);
             if (choose == null) { Log.Info("adventure: no Choose button"); yield break; }
-            if (choose.IsEnabled()) { Log.Info("adventure: Choose"); choose.TriggerRelease(); }
+            if (choose.IsEnabled()) { Log.Info("adventure: Choose"); Core.Click.Peg(choose); }
             else Speech.Say(Ui.LabelOf(choose));
         }
 

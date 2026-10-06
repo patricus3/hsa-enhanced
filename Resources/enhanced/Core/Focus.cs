@@ -141,13 +141,28 @@ namespace HSAEnhanced.Core
         {
             var top = Top;
             if (top == null) return false;
-            var input = UniversalInputManager.Get();
-            if (input != null && input.IsTextInputActive()) return false;
+            if (Typing) return false;
             if (Input.anyKeyDown && Speech.UsingSapi) Speech.Silence();
             if (Keys.Help.Pressed) { Speech.Say(top.Help()); return true; }
             bool mine = false;
             try { mine = top.HandleKey(); } catch (Exception e) { Log.Error(e); }
             return mine;
+        }
+
+        // the game's text box has the keys: one is open and its owner is still on screen (a box
+        // left behind by a screen that is gone does not take them)
+        internal static bool Typing
+        {
+            get
+            {
+                var input = UniversalInputManager.Get();
+                if (input == null || !input.IsTextInputActive()) return false;
+                GameObject owner = null;
+                try { owner = Ref.Get<GameObject>(input, "m_inputOwner"); } catch { }
+                if (owner != null && owner.activeInHierarchy) return true;
+                if (Input.anyKeyDown) Log.Once("keys: the game's text box is open but its owner is " + (owner == null ? "gone" : "hidden (" + owner.name + ")") + "; the keys are ours");
+                return false;
+            }
         }
 
         // start of AccessibilityMgr.Output: Hearthstone Access's screens are quiet behind ours

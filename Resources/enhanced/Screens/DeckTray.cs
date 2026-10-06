@@ -152,7 +152,7 @@ namespace HSAEnhanced
         void PressFormat(SwitchFormatButton f)
         {
             Log.Info("deck tray: format button (enabled " + f.IsEnabled() + ")");
-            f.TriggerRelease();
+            Core.Click.Peg(f);
             if (!f.IsEnabled() && f.gameObject.activeInHierarchy) Say(Str.Unavailable);
         }
 
@@ -300,7 +300,7 @@ namespace HSAEnhanced
             {
                 if (c.Page >= 0 && !c.Button.gameObject.activeInHierarchy) Ref.Call(Tray, "ShowPage", c.Page, false);
                 Log.Info("deck tray: chose " + ChoiceLabel(c.Button));
-                c.Button.TriggerRelease();
+                Core.Click.Peg(c.Button);
                 Say(ChoiceLabel(c.Button));
             }
             catch (Exception e) { Log.Error(e); }
@@ -326,7 +326,7 @@ namespace HSAEnhanced
             if (play == null) return;
             if (!Enabled(play)) { Say(PlayLabel()); return; }
             Log.Info("deck tray: play");
-            play.TriggerRelease();
+            Core.Click.Peg(play);
         }
 
         // the tray's back button, else the game's own way back
