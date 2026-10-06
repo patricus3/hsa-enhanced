@@ -177,6 +177,7 @@ namespace HSAEnhanced
                 var menu = m_view();
                 var k = menu.IndexOfKey(key);
                 menu.Index = k >= 0 ? k : at;
+                if (k >= 0) menu.Line = m_menu.Line;
                 m_menu = menu;
             }
             catch (Exception e) { Log.Error(e); }
@@ -287,11 +288,13 @@ namespace HSAEnhanced
         #region Lists
         Menu PlayerList(string name, List<BnetPlayer> players, bool recent, Func<Menu> self)
         {
-            var menu = new Menu(this, name, () => Show(Main, 0, true));
+            // Left/Right between the players (their names), Down: status, then rank
+            var menu = new Menu(this, name, () => Show(Main, 0, true)) { Horizontal = true };
             foreach (var p in players)
             {
                 var player = p;
-                menu.AddOption(Friends.Line(player, recent), () => Show(() => Player(player, recent, self), 0, true), player);
+                menu.AddOption(Friends.Name(player), () => Show(() => Player(player, recent, self), 0, true), player,
+                    () => new List<string> { Friends.Status(player, recent), player.IsOnline() ? Friends.Ranks(player) : null });
             }
             return menu;
         }
