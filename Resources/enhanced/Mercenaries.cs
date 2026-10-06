@@ -24,6 +24,7 @@ namespace HSAEnhanced
         static MercScreen s_screen;
         internal static int Active;     // the fallback menu leaves these scenes to us
         static float s_next;
+        static string s_why;            // why the screen is not ours yet (logged once)
 
         // from FallbackWatcher, twice a second
         internal static void Tick()
@@ -37,7 +38,12 @@ namespace HSAEnhanced
                 if (!here) { Leave(); return; }
                 if (scenes.IsTransitioning()) return;
                 string key, title; List<GameButton> items;
-                if (!Build(scenes.GetMode(), out key, out title, out items)) return;   // still loading: the menu stays as it was
+                s_why = "loading";
+                if (!Build(scenes.GetMode(), out key, out title, out items))
+                {
+                    Log.Once("mercenaries: not ours yet in " + scenes.GetMode() + ": " + s_why);
+                    return;     // still loading: the menu stays as it was
+                }
                 if (s_screen == null)
                 {
                     s_screen = new MercScreen();
@@ -175,14 +181,16 @@ namespace HSAEnhanced
         static bool Village(ref string key, ref string title, List<GameButton> items)
         {
             var display = UnityEngine.Object.FindObjectOfType<LettuceVillageDisplay>();
-            if (display == null || Blocked(display)) return false;
+            if (display == null) { s_why = "no village display"; return false; }
+            if (Blocked(display)) { s_why = "the village blocks clicks"; return false; }
             var popups = LettuceVillagePopupManager.Get();
             var open = popups == null ? LettuceVillagePopupManager.PopupType.INVALID : popups.CurrentlyOpenPopup;
             if (open == LettuceVillagePopupManager.PopupType.PVE) return TravelPoint(ref key, ref title, items);
             if (open == LettuceVillagePopupManager.PopupType.WORKSHOP) return Workshop(ref key, ref title, items);
-            if (open != LettuceVillagePopupManager.PopupType.INVALID) return false;      // the fallback reads that popup
+            if (open != LettuceVillagePopupManager.PopupType.INVALID) { s_why = "popup " + open + " (the general reader's)"; return false; }
             var village = display.GetVillage();
-            if (village == null || !village.VillageIsReady) return false;
+            if (village == null) { s_why = "no village"; return false; }
+            if (!village.VillageIsReady) { s_why = "village not ready"; return false; }
             key = "village";
             title = Str.Word("GLUE_MERCENARIES");
             if (village.Buildings != null)
@@ -218,7 +226,7 @@ namespace HSAEnhanced
         static bool CampfireMenu(ref string key, ref string title, List<GameButton> items)
         {
             var board = UnityEngine.Object.FindObjectOfType<LettuceVillageTaskBoard>();
-            if (board == null) return false;
+            if (board == null) return TaskCollectionMenu(ref key, ref title, items);
             var model = Ref.Get<MercenaryVillageTaskBoardDataModel>(board, "m_dataModel");
             key = "campfire";
             title = Str.Word("GLUE_LETTUCE_VILLAGE_TASK_TITLE");
@@ -247,6 +255,33 @@ namespace HSAEnhanced
                 var popups = LettuceVillagePopupManager.Get();
                 popups.Hide(LettuceVillagePopupManager.PopupType.TASKBOARD);
                 if (popups.CurrentlyOpenPopup == LettuceVillagePopupManager.PopupType.TASKBOARD) Say(Str.Unavailable);   // busy (rewards on show)
+            });
+            return true;
+        }
+
+        // the Campfire showing its task collection (every mercenary's tasks) instead of the board
+        static bool TaskCollectionMenu(ref string key, ref string title, List<GameButton> items)
+        {
+            var collection = UnityEngine.Object.FindObjectOfType<LettuceVillageTaskCollection>();
+            if (collection == null) { s_why = "campfire open, but neither its board nor its collection found"; return false; }
+            var model = Ref.Get<MercenaryVillageTaskCollectionDataModel>(collection, "m_dataModel");
+            key = "campfire:collection";
+            title = Str.Word("GLUE_LETTUCE_VILLAGE_TASK_TITLE");
+            if (model != null && model.TaskRows != null)
+                foreach (var row in model.TaskRows)
+                {
+                    if (row == null || row.TaskList == null) continue;
+                    foreach (var task in row.TaskList)
+                    {
+                        if (task == null || string.IsNullOrEmpty(task.Title)) continue;
+                        Info(items, collection, Campfire.Describe(task));
+                    }
+                }
+            Item(items, collection, Str.Word("GLOBAL_CLOSE"), () =>
+            {
+                Log.Info("mercenaries: close the campfire");
+                var popups = LettuceVillagePopupManager.Get();
+                if (popups != null) popups.Hide(LettuceVillagePopupManager.PopupType.TASKBOARD);
             });
             return true;
         }

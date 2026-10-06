@@ -43,6 +43,7 @@ namespace HSAEnhanced.Core
             try { TavernBrawl.Tick(); } catch (Exception e) { Log.Error(e); }
             try { BgCollection.Tick(); } catch (Exception e) { Log.Error(e); }
             try { QuestPopup.Tick(); } catch (Exception e) { Log.Error(e); }
+            try { RewardChest.Tick(); } catch (Exception e) { Log.Error(e); }
             try { EndMatch.Tick(); } catch (Exception e) { Log.Error(e); }
             try { GameStart.Tick(); } catch (Exception e) { Log.Error(e); }
             try { Announce.Tick(); } catch (Exception e) { Log.Error(e); }

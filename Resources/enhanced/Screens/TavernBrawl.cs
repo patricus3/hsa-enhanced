@@ -88,7 +88,7 @@ namespace HSAEnhanced
             var display = TavernBrawlDisplay.Get();
             // the rewards of a finished session
             var heroic = UnityEngine.Object.FindObjectOfType<HeroicBrawlRewardDisplay>();
-            var chest = UnityEngine.Object.FindObjectOfType<ChestRewardDisplay>();
+            ChestRewardDisplay chest = null;     // reward chests (any mode): RewardChest reads them
             if (heroic != null || chest != null) return Rewards(display, heroic, chest, ref key, ref title, items);
             var store = TavernBrawlStore.Get();
             if (store != null && store.gameObject.activeInHierarchy && store.IsOpen()) return Store(store, ref key, ref title, items);
