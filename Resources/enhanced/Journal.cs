@@ -183,9 +183,10 @@ namespace HSAEnhanced
             var model = SpecialEventManager.Get().GetEventDataModelForCurrentEvent();
             if (model == null) { ShowMain(0); return; }
             var menu = new Core.Menu(this, Str.Clean(model.Name), () => ShowMain(0));
-            Info(menu, EventTimeLeft());
-            Info(menu, model.ShortDescription);
-            Info(menu, model.LongDescription);
+            // The menu speaks its first row when opened. Put the event's full introduction there
+            // so the description is announced immediately instead of requiring Down several times.
+            Info(menu, Str.Join(EventTimeLeft(), model.ShortDescription, model.LongDescription,
+                model.ShortConclusion, model.LongConclusion));
             var track = RewardTrackManager.Get().GetCurrentEventRewardTrack();
             bool chosen = model.ActiveTrackId != 0 || (track != null && track.IsValid);
             if (!chosen && !string.IsNullOrEmpty(model.ChooseTrackPrompt) && model.RewardTracks != null)
