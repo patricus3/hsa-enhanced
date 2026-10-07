@@ -51,6 +51,15 @@ namespace HSAEnhanced
         internal static void Close()
         {
             if (s_ui == null) return;
+            // The game's close callback can arrive during the journal's opening transition.
+            // Keep our menu while the popup is still active; Host.Screens will close it once
+            // the popup actually leaves the hierarchy.
+            var popup = UnityEngine.Object.FindObjectOfType<JournalPopup>();
+            if (popup != null && popup.gameObject.activeInHierarchy)
+            {
+                Log.Info("journal: ignored close while popup remains shown");
+                return;
+            }
             var ui = s_ui;
             s_ui = null;
             Core.Focus.Pop(ui);
