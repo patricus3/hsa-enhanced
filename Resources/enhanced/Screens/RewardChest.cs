@@ -221,6 +221,10 @@ namespace HSAEnhanced
             items.Add(new GameButton { Target = reward, Way = true, Label = Str.Word("GLOBAL_CONTINUE"), Click = () =>
             {
                 Log.Info("rewards: continue past " + r.name);
+                // Reward's click catcher forwards RELEASE to this listener dispatcher.
+                // Calling the dispatcher directly avoids a no-op when the catcher exists
+                // but is not accepting Peg input (seen on earned card-back rewards).
+                if (Ref.Call(r, "OnClickReleased", new object[] { null })) return;
                 if (r.m_clickCatcher != null && r.m_clickCatcher.gameObject.activeInHierarchy) Core.Click.Peg(r.m_clickCatcher);
                 else Core.Click.Mouse(r.gameObject);
             } });

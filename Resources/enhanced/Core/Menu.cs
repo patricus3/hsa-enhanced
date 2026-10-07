@@ -16,7 +16,7 @@ namespace HSAEnhanced.Core
         readonly List<Option> m_options = new List<Option>();
         int m_index;
 
-        internal bool SpaceSelects;
+        internal bool SpaceSelects = false;
 
         // a row of items: Left/Right (and Tab) move between them, Up/Down read the item's lines
         // (line 0 is its name), Home/End, Enter selects

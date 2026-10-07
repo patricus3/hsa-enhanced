@@ -253,7 +253,11 @@ namespace HSAEnhanced
                     m_item.Start();
                 }
             }
-            else if (m_item != null && !m_item.StillOpen()) CloseItem();
+            else if (m_item != null)
+            {
+                if (!m_item.StillOpen()) CloseItem();
+                else m_item.RefreshConfirmation();
+            }
 
             // item list or page buttons changed (items arrive after the page opens, prices refresh, ...);
             // checked once a second, walking the page is not free
@@ -300,6 +304,7 @@ namespace HSAEnhanced
         readonly Widget.EventListenerDelegate m_listener;
         Core.Menu m_menu;
         bool m_dismissed;
+        string m_confirmationSignature;
 
         internal AccessibleBlackMarketItem(AccessibleBlackMarket market, BlackMarketItemPopup popup)
         {
@@ -326,6 +331,34 @@ namespace HSAEnhanced
         {
             Build();
             m_menu.StartReading();
+        }
+
+        // The accepted haggle offer replaces the popup's buttons with an OK button. The
+        // button can live outside the item widget, so keep it in this focused menu while
+        // the game shows the acceptance state.
+        internal void RefreshConfirmation()
+        {
+            var item = Item;
+            if (item == null || item.HaggleStatus == BlackMarketItemEntry.HaggleStatus.HS_NONE) return;
+            var ok = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                Str.Word("GLOBAL_OK", "GLOBAL_BUTTON_OK", "GLUE_BUTTON_OK"), "OK"
+            };
+            var buttons = Ui.ClickablesOnScreen(null);
+            var signature = item.HaggleStatus.ToString();
+            foreach (var b in buttons) if (ok.Contains(b.Label)) signature += "|" + b.Label + ":" + b.Target.GetInstanceID();
+            if (signature == m_confirmationSignature) return;
+            m_confirmationSignature = signature;
+
+            var keep = m_menu == null ? 0 : m_menu.Index;
+            Build();
+            foreach (var b in buttons)
+            {
+                if (!ok.Contains(b.Label)) continue;
+                var button = b;
+                m_menu.AddOption(button.Label, () => button.Click());
+            }
+            m_menu.SetIndex(Math.Min(keep, m_menu.Count - 1));
         }
 
         void Build()
