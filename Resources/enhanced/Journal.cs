@@ -475,6 +475,9 @@ namespace HSAEnhanced
                 var label = Str.Join(parts.ToArray());
                 menu.AddOption(label, () => ShowTrackLevel(track, isEvent, node.Level, 0));
             }
+            // Keep an explicit menu item as well as the Backspace handler. On the track itself,
+            // players need a keyboard-selectable way back to the journal/event screen.
+            menu.AddOption(Str.Back, back);
             Show(menu, at, () => ShowTrack(track, isEvent, Index));
             Log.Info("journal: track " + track.RewardTrackId + " level " + current + ", " + nodes.Count + " levels, " + ready.Count + " to claim");
         }
