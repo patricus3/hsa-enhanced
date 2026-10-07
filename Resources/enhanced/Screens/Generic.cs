@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Hearthstone.InGameMessage.UI;
 using Hearthstone.UI;
 using HSAEnhanced.Core;
 using UnityEngine;
@@ -217,7 +218,7 @@ namespace HSAEnhanced
             }
             if (Keys.Enter.Pressed || Keys.Space.Pressed)
             {
-                if (m_buttons.Count == 0) { Core.Click.MouseCenter(); return true; }
+                if (m_buttons.Count == 0) { Core.Click.Mouse(m_root); return true; }
                 var b = m_buttons[Math.Min(m_button, m_buttons.Count - 1)];
                 Log.Info("press: " + b.Label);
                 b.Click();
@@ -280,6 +281,13 @@ namespace HSAEnhanced
             }
             if (m_popup)
             {
+                // In-game message modals can have no Clickable or PegUIElement controls in
+                // their popup subtree. Route Continue to the handler used by the modal's close button.
+                var message = Root.GetComponentInChildren<MessageModal>(true);
+                if (message == null) message = Root.GetComponentInParent<MessageModal>();
+                if (message != null)
+                    found.Add(new GameButton { Target = message, Label = Str.Word("GLOBAL_CONTINUE"), Click = message.OnClosePressed });
+
                 var labels = new List<string>();
                 foreach (var b in found) labels.Add(b.Label);
                 var title = Title();
@@ -297,7 +305,7 @@ namespace HSAEnhanced
                 if (!found.Exists(b => !(b.Target is UberText)))
                 {
                     var root = Root;
-                    found.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.MouseCenter() });
+                    found.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Mouse(root) });
                 }
             }
             return found;
