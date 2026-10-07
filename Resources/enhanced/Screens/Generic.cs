@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Hearthstone.InGameMessage.UI;
 using Hearthstone.UI;
 using HSAEnhanced.Core;
 using UnityEngine;
@@ -281,13 +280,6 @@ namespace HSAEnhanced
             }
             if (m_popup)
             {
-                // In-game message modals can have no Clickable or PegUIElement controls in
-                // their popup subtree. Route Continue to the handler used by the modal's close button.
-                var message = Root.GetComponentInChildren<MessageModal>(true);
-                if (message == null) message = Root.GetComponentInParent<MessageModal>();
-                if (message != null)
-                    found.Add(new GameButton { Target = message, Label = Str.Word("GLOBAL_CONTINUE"), Click = message.OnClosePressed });
-
                 var labels = new List<string>();
                 foreach (var b in found) labels.Add(b.Label);
                 var title = Title();
@@ -305,7 +297,14 @@ namespace HSAEnhanced
                 if (!found.Exists(b => !(b.Target is UberText)))
                 {
                     var root = Root;
-                    found.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Mouse(root) });
+                    // Some popups use a graphic-only Clickable with no text. The normal
+                    // scanner omits it, so route Continue through its PegUIElement handler.
+                    var click = root == null ? null : root.GetComponentInChildren<Clickable>(false);
+                    var peg = click == null ? null : click.GetComponent<PegUIElement>();
+                    if (peg != null)
+                        found.Add(new GameButton { Target = peg, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Peg(peg) });
+                    else
+                        found.Add(new GameButton { Target = root == null ? null : root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Mouse(root) });
                 }
             }
             return found;
