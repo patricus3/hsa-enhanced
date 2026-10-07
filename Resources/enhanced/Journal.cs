@@ -155,7 +155,10 @@ namespace HSAEnhanced
             if (current != null)
             {
                 var model = events.GetEventDataModelForCurrentEvent();
-                menu.AddOption(Str.Join(Journal.Word("GLUE_PROGRESSION_EVENT_TAB_TITLE"), model == null ? null : Str.Clean(model.Name), EventTimeLeft()), () => ShowEvent(0));
+                menu.AddOption(Str.Join(Journal.Word("GLUE_PROGRESSION_EVENT_TAB_TITLE"),
+                    model == null ? null : Str.Clean(model.Name), EventTimeLeft(),
+                    model == null ? null : Str.Clean(model.ShortDescription),
+                    model == null ? null : Str.Clean(model.LongDescription)), () => ShowEvent(0));
                 return;
             }
             // none now: when the next one starts (as the event tab's door says)
