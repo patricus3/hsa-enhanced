@@ -381,10 +381,11 @@ namespace HSAEnhanced
             Output(Str.Join(qty(), price()));
         }
 
-        // The popup's own handler, as if its button had been clicked
+        // Dispatch through the popup widget so its registered game listener handles the action,
+        // just as it does for an in-game button. Calling HandleEvent directly skips that path.
         void Send(string ev)
         {
-            try { Ref.Call(m_popup, "HandleEvent", ev); }
+            try { if (m_widget != null) m_widget.TriggerEvent(ev); }
             catch (Exception e) { Log.Error(e); }
         }
 
