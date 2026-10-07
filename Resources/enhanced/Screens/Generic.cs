@@ -217,7 +217,7 @@ namespace HSAEnhanced
             }
             if (Keys.Enter.Pressed || Keys.Space.Pressed)
             {
-                if (m_buttons.Count == 0) { Core.Click.Mouse(m_root); return true; }
+                if (m_buttons.Count == 0) { Core.Click.MouseCenter(); return true; }
                 var b = m_buttons[Math.Min(m_button, m_buttons.Count - 1)];
                 Log.Info("press: " + b.Label);
                 b.Click();
@@ -297,7 +297,7 @@ namespace HSAEnhanced
                 if (!found.Exists(b => !(b.Target is UberText)))
                 {
                     var root = Root;
-                    found.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Mouse(root) });
+                    found.Add(new GameButton { Target = root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.MouseCenter() });
                 }
             }
             return found;

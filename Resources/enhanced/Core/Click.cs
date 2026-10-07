@@ -28,6 +28,8 @@ namespace HSAEnhanced.Core
             if (go == null) return;
             VirtualMouse.ClickOn(go);
         }
+
+        internal static void MouseCenter() { VirtualMouse.ClickAt(new Vector3(UnityEngine.Screen.width / 2, UnityEngine.Screen.height / 2, 0)); }
     }
 
     // Without Hearthstone Access: a mouse the game sees through its own input layer
@@ -65,6 +67,16 @@ namespace HSAEnhanced.Core
             s_mouse.m_step = 1;
             s_mouse.m_frame = Time.frameCount;
             Log.Info("virtual mouse: click " + go.name + " at " + screen);
+        }
+
+        internal static void ClickAt(Vector3 screen)
+        {
+            Ensure();
+            screen.z = 0;
+            s_mouse.m_position = screen;
+            s_mouse.m_step = 1;
+            s_mouse.m_frame = Time.frameCount;
+            Log.Info("virtual mouse: click at " + screen);
         }
 
         // Host.LateUpdate: one step per frame
