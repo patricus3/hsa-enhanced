@@ -245,9 +245,9 @@ namespace HSAEnhanced
             var trackType = Battlegrounds ? QuestPool.RewardTrackType.BATTLEGROUNDS : QuestPool.RewardTrackType.GLOBAL;
             if (!eventOnly)
             {
-                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.NONE, trackType, true), null);
-                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.DAILY, trackType, true), "GLUE_PROGRESSION_QUEST_DAILY");
-                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.WEEKLY, trackType, true), "GLUE_PROGRESSION_QUEST_WEEKLY");
+                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.NONE, trackType, true), null, eventOnly);
+                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.DAILY, trackType, true), "GLUE_PROGRESSION_QUEST_DAILY", eventOnly);
+                AddQuests(menu, quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.WEEKLY, trackType, true), "GLUE_PROGRESSION_QUEST_WEEKLY", eventOnly);
             }
             var eventTrack = Battlegrounds ? null : RewardTrackManager.Get().GetCurrentEventRewardTrack();
             if (eventTrack != null && eventTrack.IsValid)
@@ -255,13 +255,13 @@ namespace HSAEnhanced
                 var list = quests.CreateActiveQuestsDataModel(QuestPool.QuestPoolType.EVENT, (QuestPool.RewardTrackType)eventTrack.TrackDataModel.RewardTrackType,
                     eventTrack.TrackDataModel.Level < eventTrack.TrackDataModel.LevelHardCap);
                 if (list != null && list.Quests != null) list.Quests.Sort(QuestManager.SortChainQuestsToFront);
-                AddQuests(menu, list, "GLUE_PROGRESSION_QUEST_EVENT");
+                AddQuests(menu, list, "GLUE_PROGRESSION_QUEST_EVENT", eventOnly);
             }
             menu.AddOption(Str.Back, () => { if (eventOnly) ShowEvent(0); else ShowMain(0); });
             Show(menu, at, () => ShowQuests(eventOnly, Index));
         }
 
-        void AddQuests(Core.Menu menu, QuestListDataModel list, string poolKey)
+        void AddQuests(Core.Menu menu, QuestListDataModel list, string poolKey, bool eventOnly)
         {
             if (list == null || list.Quests == null) return;
             var pool = poolKey == null ? null : Journal.Word(poolKey);
@@ -276,7 +276,7 @@ namespace HSAEnhanced
                     continue;
                 }
                 var label = Str.Join(pool, QuestLabel(quest));
-                menu.AddOption(label, () => ShowQuest(quest, 0));
+                menu.AddOption(label, () => ShowQuest(quest, eventOnly, 0));
             }
             Info(menu, list.BankedQuestCountMessage);
         }
@@ -288,22 +288,23 @@ namespace HSAEnhanced
                 Journal.Rewards(q.Rewards), Str.Clean(q.TimeUntilExpiration));
         }
 
-        void ShowQuest(QuestDataModel quest, int at)
+        void ShowQuest(QuestDataModel quest, bool eventOnly, int at)
         {
-            var menu = new Core.Menu(this, Str.Clean(string.IsNullOrEmpty(quest.Name) ? quest.Description : quest.Name), () => ShowQuests(false, 0));
+            Action back = () => ShowQuests(eventOnly, 0);
+            var menu = new Core.Menu(this, Str.Clean(string.IsNullOrEmpty(quest.Name) ? quest.Description : quest.Name), back);
             Info(menu, QuestLabel(quest));
             if (quest.Status == QuestManager.QuestStatus.ACTIVE && !quest.IsChainQuest && quest.RerollCount > 0)
                 menu.AddOption(Str.Join(Journal.Word("GLUE_BACON_REROLL"), quest.RerollCount.ToString()), () =>
                 {
                     if (!Journal.Online(this)) return;
                     Reroll(quest.QuestId);
-                    m_rebuild = () => ShowQuests(false, 0);
+                    m_rebuild = () => ShowQuests(eventOnly, 0);
                     RebuildSoon();
                 });
             if (quest.Abandonable)
-                menu.AddOption(Journal.Word("GLUE_PROGRESSION_ABANDON_QUEST_HEADER"), () => AskAbandon(quest));
-            menu.AddOption(Str.Back, () => ShowQuests(false, 0));
-            Show(menu, at, () => ShowQuest(quest, Index));
+                menu.AddOption(Journal.Word("GLUE_PROGRESSION_ABANDON_QUEST_HEADER"), () => AskAbandon(quest, eventOnly));
+            menu.AddOption(Str.Back, back);
+            Show(menu, at, () => ShowQuest(quest, eventOnly, Index));
         }
 
         // the quest's tile rerolls it, as its reroll button does (with its animation and sound): the
@@ -360,7 +361,7 @@ namespace HSAEnhanced
         }
 
         // the game's own question before abandoning (the tile asks the same)
-        void AskAbandon(QuestDataModel quest)
+        void AskAbandon(QuestDataModel quest, bool eventOnly)
         {
             if (!Journal.Online(this)) return;
             var info = new AlertPopup.PopupInfo
@@ -374,7 +375,7 @@ namespace HSAEnhanced
                     if (response != AlertPopup.Response.CONFIRM) return;
                     Log.Info("journal: abandon quest " + quest.QuestId);
                     QuestManager.Get().AbandonQuest(quest.QuestId);
-                    m_rebuild = () => ShowQuests(false, 0);
+                    m_rebuild = () => ShowQuests(eventOnly, 0);
                     RebuildSoon();
                 }
             };
