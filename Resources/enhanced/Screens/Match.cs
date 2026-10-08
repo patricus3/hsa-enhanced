@@ -153,6 +153,7 @@ namespace HSAEnhanced
             if (!Input.anyKeyDown) return false;
             var gs = GS;
             if (gs == null) return false;
+            if (Bind.SEE_HISTORY.Pressed) { HistoryLog.Open(); return true; }
 
             // the end screen: Enter goes on
             var end = EndGameScreen.Get();
@@ -192,15 +193,18 @@ namespace HSAEnhanced
             }
             if (Keys.Back.Pressed && gs.IsInChoiceMode()) return true;      // a choice cannot be backed out of
 
-            if (!gs.IsInMainOptionMode()) return false;
+            // The hero is the emote control; keep Space available for other focused cards.
             var card = Combat.FocusedCard;
-            if (Keys.Enter.Pressed) { if (card != null) Act(card); return true; }
-            // Space on your hero: the emotes, as clicking the hero opens them
-            if (Keys.Space.Pressed && card != null && card.GetEntity() != null && card.GetEntity().IsHero() && card.GetEntity().IsControlledByFriendlySidePlayer())
+            var entity = card == null ? null : card.GetEntity();
+            if (Keys.Space.Pressed && entity != null && entity.IsHero() && entity.IsControlledByFriendlySidePlayer()
+                && (gs.IsInMainOptionMode() || !gs.IsFriendlySidePlayerTurn()))
             {
                 EmoteUI.Open();
                 return true;
             }
+
+            if (!gs.IsInMainOptionMode()) return false;
+            if (Keys.Enter.Pressed) { if (card != null) Act(card); return true; }
             if (Bind.FORCE_END_TURN.Pressed) { EndTurn(); return true; }
             if (Bind.END_TURN.Pressed) { AskEndTurn(); return true; }
             if (Bind.SEND_MINION_TO_FACE.Pressed) { MinionToFace(card); return true; }
@@ -664,7 +668,7 @@ namespace HSAEnhanced
         internal static void Open()
         {
             var handler = EmoteHandler.Get();
-            if (handler == null || GameState.Get() == null || GameState.Get().IsBusy()) { Core.Speech.Say(Str.Unavailable); return; }
+            if (handler == null || GameState.Get() == null) { Core.Speech.Say(Str.Unavailable); return; }
             handler.ShowEmotes();
             if (!handler.AreEmotesActive()) { Core.Speech.Say(Str.Unavailable); return; }
             if (s_open != null) Core.Focus.Pop(s_open);
@@ -711,4 +715,3 @@ namespace HSAEnhanced
         internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
 }
-

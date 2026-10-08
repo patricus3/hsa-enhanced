@@ -55,6 +55,12 @@ namespace HSAEnhanced
         Menu m_menu;
         string m_key, m_signature;
         float m_next, m_armedUntil;
+        List<string> m_bucket;
+        DraftDisplay m_bucketDisplay;
+        DraftSlotType m_bucketSlot;
+        TAG_PREMIUM m_bucketPremium;
+        int m_bucketChoice;
+        string m_bucketTitle;
 
         internal override bool Alive { get { return Arena.InArena; } }
 
@@ -71,7 +77,13 @@ namespace HSAEnhanced
             if (!newStep && sig == m_signature) return true;
             var at = m_menu == null || newStep ? 0 : m_menu.Index;
             var menu = new Menu(this, title, Back);
-            foreach (var b in items) { var click = b.Click; menu.AddOption(b.Label, () => click()); }
+            menu.Horizontal = key.StartsWith("bucket:");
+            foreach (var b in items)
+            {
+                var click = b.Click;
+                if (b.Lines != null) menu.AddOption(b.Label, () => click(), () => b.Lines);
+                else menu.AddOption(b.Label, () => click());
+            }
             menu.Index = at;
             m_menu = menu;
             m_signature = sig;
@@ -92,6 +104,7 @@ namespace HSAEnhanced
             bool drafting = state == ArenaSessionState.DRAFTING || state == ArenaSessionState.REDRAFTING;
             if (drafting && DM.IsClientStateInAnyDrafting())
             {
+                if (m_bucket != null) return Bucket(display, ref key, ref title, items);
                 // the first-time banner holds the choices back until it is closed: it is said with them
                 if (Ref.Get<bool>(display, "m_phaseMessageShowing")) display.HandleArenaDraftScreenEvent("PHASE_POPUP_CLOSED");
                 if (display.GetCardVisuals() == null || !display.DraftAnimationIsComplete() || display.IsHeroAnimating()) return false;
@@ -190,15 +203,48 @@ namespace HSAEnhanced
                 if (package != null && package.Count > 0)
                 {
                     var names = new List<string>();
-                    foreach (var p in package) names.Add(Name(p));
+                    foreach (var p in package) names.Add(Card(p));
                     label = Str.Join(label, string.Join(", ", names.ToArray()));
                 }
                 int n = i + 1;
                 bool valid = display.IsChoiceValid(n);
                 if (!valid) label = Str.Join(label, Str.Unavailable);
-                Add(items, anchor, label, () => Pick(display, slot, n, premium, package != null && package.Count > 0, valid));
+                if (package != null && package.Count > 0)
+                {
+                    var bucket = new List<string>(package);
+                    Add(items, anchor, label, () =>
+                    {
+                        if (!valid) { Speech.Say(Str.Unavailable); return; }
+                        m_bucket = bucket;
+                        m_bucketDisplay = display;
+                        m_bucketSlot = slot;
+                        m_bucketPremium = premium;
+                        m_bucketChoice = n;
+                        m_bucketTitle = Card(id);
+                        Refresh(true);
+                    });
+                }
+                else Add(items, anchor, label, () => Pick(display, slot, n, premium, false, valid));
             }
             DeckItems(items, anchor);
+            return true;
+        }
+
+        bool Bucket(DraftDisplay display, ref string key, ref string title, List<GameButton> items)
+        {
+            key = "bucket:" + m_bucketSlot + ":" + m_bucketChoice;
+            title = Str.Join(ModeName(), m_bucketTitle);
+            foreach (var cardId in m_bucket)
+            {
+                var id = cardId;
+                var lines = CardLines(id);
+                var label = lines.Count > 0 ? lines[0] : Str.Clean(id);
+                items.Add(new GameButton { Target = display, Label = label, Lines = lines.Count > 1 ? lines.GetRange(1, lines.Count - 1) : new List<string>(), Click = () =>
+                {
+                    m_bucket = null;
+                    Pick(m_bucketDisplay, m_bucketSlot, m_bucketChoice, m_bucketPremium, true, true);
+                }});
+            }
             return true;
         }
 
@@ -299,21 +345,18 @@ namespace HSAEnhanced
             Add(items, anchor, Str.Join(Str.Word("GLUE_FORGE_MANATIP_HEADER"), string.Join(", ", bars.ToArray())), null);
         }
 
-        static string Name(string cardId)
-        {
-            var def = DefLoader.Get().GetEntityDef(cardId);
-            return def == null ? cardId : Str.Clean(def.GetName());
-        }
-
-        // a card as the choice shows it: name, cost, attack / health, its text
+        // Use the same complete, line-ordered description as card reading elsewhere.
         static string Card(string cardId)
         {
             var def = DefLoader.Get().GetEntityDef(cardId);
-            if (def == null) return cardId;
-            string text = null;
-            try { text = def.GetCardTextInHand(); } catch { }
-            string stats = def.IsMinion() ? def.GetATK() + "/" + def.GetHealth() : def.IsWeapon() ? def.GetATK() + "/" + def.GetHealth() : null;
-            return Str.Join(Str.Clean(def.GetName()), def.IsHero() ? null : def.GetCost().ToString(), stats, Str.Clean(text));
+            if (def == null) return Str.Clean(cardId);
+            return string.Join(". ", CombatCards.Lines(def).ToArray());
+        }
+
+        static List<string> CardLines(string cardId)
+        {
+            var def = DefLoader.Get().GetEntityDef(cardId);
+            return def == null ? new List<string> { Str.Clean(cardId) } : CombatCards.Lines(def);
         }
 
         static void Add(List<GameButton> items, Component anchor, string label, Action click)
@@ -330,7 +373,16 @@ namespace HSAEnhanced
             Navigation.GoBack();
         }
 
-        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
+        internal override bool HandleKey()
+        {
+            if (m_bucket != null && Keys.Back.Pressed)
+            {
+                m_bucket = null;
+                Refresh(true);
+                return true;
+            }
+            return m_menu != null && m_menu.HandleKey();
+        }
 
         internal override string Help() { return m_menu == null ? "" : m_menu.Help(); }
 

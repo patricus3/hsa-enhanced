@@ -28,6 +28,8 @@ namespace HSAEnhanced.Core
 
         internal void AddOption(string text, Action click, object key, Func<List<string>> lines) { m_options.Add(new Option { Text = text, Click = click, Key = key, Lines = lines }); }
 
+        internal void AddOption(string text, Action click, Func<List<string>> lines) { m_options.Add(new Option { Text = text, Click = click, Lines = lines }); }
+
         internal Menu(Screen owner, string name, Action back = null) { m_owner = owner; m_name = name; m_back = back; }
 
         internal void AddOption(string text, Action click) { m_options.Add(new Option { Text = text, Click = click }); }

@@ -50,6 +50,7 @@ namespace HSAEnhanced
         static void Reset(GameState gs)
         {
             s_gs = gs;
+            HistoryLog.Reset();
             s_last = null;
             s_canSnapshot = s_started = s_turnStarted = s_waitingBanner = s_turnStartPending = false;
             s_prevStep = TAG_STEP.INVALID;
@@ -138,6 +139,7 @@ namespace HSAEnhanced
             text = text == null ? "" : text.Trim();
             if (text.Length == 0) return;
             Log.Info("announce: " + text);
+            HistoryLog.Add(text);
             Speech.Say(text);
         }
 
