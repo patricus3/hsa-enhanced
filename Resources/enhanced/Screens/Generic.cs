@@ -68,6 +68,10 @@ namespace HSAEnhanced
 
         static GameObject TopPopup()
         {
+            // OptionsMenu is an overlay rather than a Dialogs popup. The Game Menu button list
+            // stays shown underneath it, so prefer the actual options overlay while it is open.
+            var options = OptionsMenu.Get();
+            if (options != null && options.IsShown()) return options.gameObject;
             var dialog = Dialogs.Shown;
             if (dialog != null && !Claimed(dialog.gameObject)) return dialog.gameObject;
             // the game's button-list menus: the Escape menu and those it opens
@@ -280,6 +284,21 @@ namespace HSAEnhanced
             }
             if (m_popup)
             {
+                var options = OptionsMenu.Get();
+                if (options != null && options.IsShown() && Root == options.gameObject)
+                {
+                    var label = OptionsBattleLogsLabel();
+                    found.Add(new GameButton
+                    {
+                        Target = options,
+                        Label = label,
+                        Click = () =>
+                        {
+                            Settings.SaveBattleLogs = !Settings.SaveBattleLogs;
+                            Say(OptionsBattleLogsLabel(), true);
+                        }
+                    });
+                }
                 var labels = new List<string>();
                 foreach (var b in found) labels.Add(b.Label);
                 var title = Title();
@@ -308,6 +327,14 @@ namespace HSAEnhanced
                 }
             }
             return found;
+        }
+
+        static string OptionsBattleLogsLabel()
+        {
+            var name = Speech.S(K.OPTIONS_MENU_SAVE_BATTLE_LOGS);
+            var checkbox = Speech.S(K.OPTIONS_MENU_CHECKBOX_LABEL, name);
+            var state = Speech.S(Settings.SaveBattleLogs ? K.OPTIONS_MENU_CHECKBOX_CHECKED : K.OPTIONS_MENU_CHECKBOX_NOT_CHECKED);
+            return Str.Join(checkbox, state);
         }
 
         // true when there is something to read; rebuilt at most twice a second, on the same option

@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using HSAEnhanced.Core;
+using UnityEngine;
 
 namespace HSAEnhanced
 {
@@ -8,17 +11,67 @@ namespace HSAEnhanced
     {
         static readonly List<string> s_entries = new List<string>();
         static HistoryLogUI s_open;
+        static string s_file;
+        static bool s_fileFailed;
 
         internal static void Reset()
         {
             if (s_open != null) { var old = s_open; s_open = null; Focus.Pop(old); }
             s_entries.Clear();
+            s_file = null;
+            s_fileFailed = false;
         }
 
         internal static void Add(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
-            s_entries.Add(text.Replace('\n', ' ').Trim());
+            var line = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (line.Length == 0) return;
+            s_entries.Add(line);
+            if (!Settings.SaveBattleLogs || s_fileFailed) return;
+            try
+            {
+                var gs = GameState.Get();
+                var mgr = GameMgr.Get();
+                if (gs == null || !gs.IsGameCreated() || mgr == null || mgr.IsBattlegrounds() || mgr.IsMercenaries()) return;
+                if (s_file == null) s_file = CreateBattleLogPath(gs, mgr);
+                if (s_file != null) File.AppendAllText(s_file, line + Environment.NewLine);
+            }
+            catch (Exception e)
+            {
+                s_fileFailed = true;
+                Log.Error(e);
+            }
+        }
+
+        static string CreateBattleLogPath(GameState gs, GameMgr mgr)
+        {
+            var root = Path.GetDirectoryName(Application.dataPath);
+            var folder = Path.Combine(root, "battle logs");
+            Directory.CreateDirectory(folder);
+            var me = gs.GetFriendlySidePlayer();
+            var them = gs.GetOpposingSidePlayer();
+            string mine = SafeName(me == null ? null : me.GetName());
+            string opponent = SafeName(them == null ? null : them.GetName());
+            try
+            {
+                if (string.IsNullOrEmpty(opponent) || mgr.IsAI())
+                    opponent = SafeName(them == null || them.GetHero() == null ? null : them.GetHero().GetName());
+            }
+            catch { }
+            if (string.IsNullOrEmpty(mine)) mine = "Player";
+            if (string.IsNullOrEmpty(opponent)) opponent = "Opponent";
+            var stem = DateTime.Now.ToString("yyyy-M-d H_mm") + " " + mine + " v " + opponent;
+            var path = Path.Combine(folder, stem + ".txt");
+            for (int n = 2; File.Exists(path); n++) path = Path.Combine(folder, stem + " (" + n + ").txt");
+            return path;
+        }
+
+        static string SafeName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+            return name.Trim();
         }
 
         internal static void Open()

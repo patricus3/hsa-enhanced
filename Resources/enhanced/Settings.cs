@@ -9,12 +9,19 @@ namespace HSAEnhanced
     static class Settings
     {
         const string ConfirmEndTurnKey = "HSAEnhanced.ConfirmEndTurn";
+        const string SaveBattleLogsKey = "HSAEnhanced.SaveBattleLogs";
 
         // E asks first while plays are left (HSA's question); off: E ends the turn at once, as Shift+E
         internal static bool ConfirmEndTurn
         {
             get { try { return PlayerPrefs.GetInt(ConfirmEndTurnKey, 1) != 0; } catch { return true; } }
             set { try { PlayerPrefs.SetInt(ConfirmEndTurnKey, value ? 1 : 0); PlayerPrefs.Save(); } catch (Exception e) { Log.Error(e); } }
+        }
+
+        internal static bool SaveBattleLogs
+        {
+            get { try { return PlayerPrefs.GetInt(SaveBattleLogsKey, 0) != 0; } catch { return false; } }
+            set { try { PlayerPrefs.SetInt(SaveBattleLogsKey, value ? 1 : 0); PlayerPrefs.Save(); } catch (Exception e) { Log.Error(e); } }
         }
 
         // our own navigation and card reading in matches (Combat): HSA's is no longer used (2026-10-01)
