@@ -414,15 +414,18 @@ namespace HSAEnhanced
         {
             s_waitingBanner = false;
             s_turnStarted = true;
-            var lines = new List<string> { Str.Word("GAMEPLAY_YOUR_TURN") };
+            // Changes collected while waiting for the turn banner belong to the previous
+            // turn boundary (for example, "Turn ended"). Speak them before announcing
+            // the new turn so the narration follows the game's event order.
+            var lines = new List<string>(s_deferred);
+            s_deferred.Clear();
+            lines.Add(Str.Word("GAMEPLAY_YOUR_TURN"));
             try
             {
                 var me = gs.GetFriendlySidePlayer();
                 if (me != null) lines.Add(A("GAMEPLAY_PLAYER_TURN_START_READ_MANA", me.GetNumAvailableResources()));
             }
             catch { }
-            lines.AddRange(s_deferred);
-            s_deferred.Clear();
             Say(Lines(lines));
         }
 
@@ -949,6 +952,10 @@ namespace HSAEnhanced
                 var name = a.Known ? a.Name : Speech.S(K.GLOBAL_CARD);
                 if (a.HeroPower && a.Zone == TAG_ZONE.PLAY) { now.Add(A(a.Friendly ? "GAMEPLAY_DIFF_MOVEMENT_PLAYER_HERO_POWER_CHANGED" : "GAMEPLAY_DIFF_MOVEMENT_OPPONENT_HERO_POWER_CHANGED", name)); continue; }
                 if (a.Hero) continue;
+                // A spell can briefly appear in PLAY while its effect resolves. Only a
+                // minion entering PLAY is a summon; reporting every card type here made
+                // spells sound as if they had been summoned onto the battlefield.
+                if (a.Zone == TAG_ZONE.PLAY && !a.Minion && !a.Weapon) continue;
                 switch (a.Zone)
                 {
                     case TAG_ZONE.HAND: hand[side].Add(name); break;
