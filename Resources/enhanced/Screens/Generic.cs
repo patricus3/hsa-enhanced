@@ -447,6 +447,9 @@ namespace HSAEnhanced
                     button.Click();
                 }, button.Label);
             }
+            // a popup with no Back / Close button of its own on the list (an icon with no text): Close
+            if (m_popup && Dialog() != null && !items.Exists(b => Labels.IsBack(b.Label)))
+                menu.AddOption(Str.Word("GLOBAL_CLOSE"), () => TryClose(), "close");
             var k = menu.IndexOfKey(key);
             menu.Index = k >= 0 ? k : at;
             m_menu = menu;
@@ -457,9 +460,36 @@ namespace HSAEnhanced
         // the game's own way back (Escape), else a Back / Cancel / Close button
         void Back()
         {
+            if (m_popup) { TryClose(); return; }
             foreach (var b in Items())
                 if (Labels.IsBack(b.Label)) { Log.Info("back: " + b.Label); b.Click(); return; }
-            if (!m_popup) { try { Navigation.GoBack(); } catch (Exception e) { Log.Error(e); } }
+            try { Navigation.GoBack(); } catch (Exception e) { Log.Error(e); }
+        }
+
+        DialogBase Dialog() { return Root == null ? null : Root.GetComponentInParent<DialogBase>() ?? Root.GetComponentInChildren<DialogBase>(); }
+
+        // closes the popup: its Back / Close button; a close button that shows no text (found by its
+        // name: Close, Exit, X); the dialog's own dismiss event; else the dialog is hidden
+        internal bool TryClose()
+        {
+            if (!m_popup || Root == null) return false;
+            foreach (var b in Items())
+                if (Labels.IsBack(b.Label)) { Log.Info("popup: closed by " + b.Label); b.Click(); return true; }
+            foreach (var c in Root.GetComponentsInChildren<Component>(false))
+            {
+                if (!(c is PegUIElement || c is Hearthstone.UI.Clickable)) continue;
+                var n = c.gameObject.name.ToLowerInvariant();
+                if (!(n.Contains("close") || n.Contains("exit") || n.Contains("dismiss") || n == "x" || n.StartsWith("x_") || n.EndsWith("_x"))) continue;
+                Log.Info("popup: closed by " + c.gameObject.name);
+                Ui.ClickOf(c)();
+                return true;
+            }
+            var dialog = Dialog();
+            if (dialog == null) return false;
+            var widget = dialog.GetComponent<Hearthstone.UI.Widget>();
+            if (widget != null) { Log.Info("popup: dismissed " + dialog.GetType().Name); widget.TriggerEvent("CODE_DISMISS"); }
+            if (dialog.IsShown()) { Log.Info("popup: hidden " + dialog.GetType().Name); dialog.Hide(); }
+            return true;
         }
 
         internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }

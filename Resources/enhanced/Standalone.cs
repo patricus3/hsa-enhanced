@@ -42,6 +42,9 @@ namespace HSAEnhanced
         // Choose One is up, Escape stays the game's own cancel.
         static bool Escape()
         {
+            // a popup of the game on top: Escape closes it
+            var popup = Focus.Top as PanelUI;
+            if (popup != null && popup.TryClose()) return true;
             var gs = GameState.Get();
             if (gs != null && (gs.IsInTargetMode() || gs.IsInSubOptionMode())) return false;
             var bar = BnetBar.Get();
