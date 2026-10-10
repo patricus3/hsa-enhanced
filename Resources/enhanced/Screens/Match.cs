@@ -663,6 +663,8 @@ namespace HSAEnhanced
         static EmoteUI s_open;
         Core.Menu m_menu;
 
+        internal static bool IsOpen { get { return s_open != null; } }
+
         internal override bool Alive { get { var h = EmoteHandler.Get(); return h != null && h.AreEmotesActive(); } }
 
         internal static void Open()

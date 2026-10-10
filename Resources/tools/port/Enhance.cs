@@ -498,6 +498,21 @@ static class Enhance
             o.Add(il.Create(OpCodes.Brfalse, original));
             o.Add(il.Create(OpCodes.Ret));
         }, AtStart: true),
+        // the emote tray stays open while our emote menu reads it (the game closes it when the mouse is elsewhere)
+        new("EmoteHandler", "HandleInput", "StandaloneEmoteInput", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
+        new("EnemyEmoteHandler", "HandleInput", "StandaloneEmoteInput", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
         // the game's error line in a match (not enough mana, ...): spoken
         new("GameplayErrorManager", "DisplayMessage", "StandaloneGameError", (il, m, hook, o) =>
         {

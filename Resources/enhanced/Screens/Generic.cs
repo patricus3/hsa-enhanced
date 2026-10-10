@@ -15,6 +15,8 @@ namespace HSAEnhanced
         static PopupBase s_popup;
         static PanelUI s_screen;
         static float s_next;
+        static string s_optionsTrace;
+        static float s_optionsRetryUntil, s_optionsRetryAt;
 
         // popups our own screens read themselves (the friends list's own popups, ...)
         internal static readonly List<Func<GameObject, bool>> Claims = new List<Func<GameObject, bool>>();
@@ -23,6 +25,8 @@ namespace HSAEnhanced
         {
             if (Time.unscaledTime < s_next) return;
             s_next = Time.unscaledTime + 0.3f;
+
+            RetryOptionsOpen();
 
             var popup = TopPopup();
             if (s_popup != null && (popup == null || s_popup.Root != popup)) { var old = s_popup; s_popup = null; Focus.Pop(old); }
@@ -56,6 +60,27 @@ namespace HSAEnhanced
             if (s_screen != null) s_screen.Refresh();
         }
 
+        internal static void RequestOptionsOpen(float delay = 0.35f)
+        {
+            s_optionsRetryUntil = Time.unscaledTime + 4f;
+            s_optionsRetryAt = Time.unscaledTime + delay;
+        }
+
+        static void RetryOptionsOpen()
+        {
+            if (s_optionsRetryUntil <= 0f) return;
+            if (Time.unscaledTime > s_optionsRetryUntil) { s_optionsRetryUntil = 0f; return; }
+            if (Time.unscaledTime < s_optionsRetryAt) return;
+            var options = ShownOptionsMenu();
+            if (options != null) { s_optionsRetryUntil = 0f; return; }
+            var gameMenu = GameMenu.Get();
+            if (gameMenu != null && gameMenu.GameMenuIsShown()) { s_optionsRetryUntil = 0f; return; }
+            s_optionsRetryAt = Time.unscaledTime + 0.75f;
+            if (gameMenu == null) { Log.Info("options trace: retry waiting; GameMenu is null"); return; }
+            Log.Info("options trace: retry GameMenu.ShowOptionsMenu");
+            gameMenu.GameMenuShowOptionsMenu();
+        }
+
         // a screen of ours takes over from the generic one
         internal static void Yield()
         {
@@ -68,12 +93,17 @@ namespace HSAEnhanced
 
         static GameObject TopPopup()
         {
-            // OptionsMenu is an overlay rather than a Dialogs popup. The Game Menu button list
-            // stays shown underneath it, so prefer the actual options overlay while it is open.
-            var options = OptionsMenu.Get();
-            if (options != null && options.IsShown()) return options.gameObject;
+            // The game exposes its emote tray as a popup too. EmoteUI owns keyboard focus while
+            // that tray is open; letting the generic popup reader claim it sends arrows back to
+            // the match screen (where the focused hero gets read again).
+            if (EmoteUI.IsOpen) return null;
+            TraceOptionsState();
             var dialog = Dialogs.Shown;
             if (dialog != null && !Claimed(dialog.gameObject)) return dialog.gameObject;
+            // OptionsMenu is an overlay rather than a Dialogs popup. The Game Menu button list
+            // stays shown underneath it, so prefer the actual options overlay over that old menu.
+            var options = ShownOptionsMenu();
+            if (options != null) return options.gameObject;
             // the game's button-list menus: the Escape menu and those it opens
             foreach (var m in UnityEngine.Object.FindObjectsByType<ButtonListMenu>(FindObjectsSortMode.None))
             {
@@ -96,6 +126,34 @@ namespace HSAEnhanced
         {
             foreach (var c in Claims) { try { if (c(go)) return true; } catch { } }
             return false;
+        }
+
+        // OptionsMenu.Get() can still point at a hidden instance while the visible overlay is a
+        // newly instantiated prefab. Search the live scene too so the old Game Menu cannot mask it.
+        internal static OptionsMenu ShownOptionsMenu()
+        {
+            var options = OptionsMenu.Get();
+            if (options != null && options.gameObject.activeInHierarchy) return options;
+            foreach (var candidate in UnityEngine.Object.FindObjectsByType<OptionsMenu>(FindObjectsSortMode.None))
+                if (candidate != null && candidate.gameObject.activeInHierarchy) return candidate;
+            return null;
+        }
+
+        static void TraceOptionsState()
+        {
+            var singleton = OptionsMenu.Get();
+            var candidates = UnityEngine.Object.FindObjectsByType<OptionsMenu>(FindObjectsSortMode.None);
+            var live = new List<string>();
+            foreach (var candidate in candidates)
+                if (candidate != null)
+                    live.Add(candidate.gameObject.name + " shown=" + candidate.IsShown() + " active=" + candidate.gameObject.activeInHierarchy);
+            var gameMenu = GameMenu.Get();
+            var state = "singleton=" + (singleton == null ? "null" : singleton.gameObject.name + " shown=" + singleton.IsShown() + " active=" + singleton.gameObject.activeInHierarchy)
+                + "; scene=" + (live.Count == 0 ? "none" : string.Join(", ", live.ToArray()))
+                + "; GameMenu=" + (gameMenu == null ? "null" : gameMenu.GameMenuIsShown().ToString());
+            if (state == s_optionsTrace) return;
+            s_optionsTrace = state;
+            Log.Info("options trace: " + state);
         }
     }
 
@@ -281,11 +339,19 @@ namespace HSAEnhanced
             {
                 var box = b.Target as CheckBox;
                 if (box != null) b.Label = Str.Join(b.Label, Friends.Checked(box.IsChecked()));
+                var dropdown = b.Target as DropdownControl;
+                if (dropdown != null)
+                {
+                    var name = dropdown.name.ToLowerInvariant();
+                    if (name.Contains("quality")) b.Label = Str.Join(Speech.S(K.OPTIONS_MENU_GRAPHICS_QUALITY_OPTION), b.Label);
+                    else if (name.Contains("fps")) b.Label = Str.Join(Speech.S(K.OPTIONS_MENU_FRAME_RATE_OPTION), b.Label);
+                    else if (name.Contains("resolution")) b.Label = Str.Join(Speech.S(K.OPTIONS_MENU_GRAPHICS_RESOLUTION_OPTION), b.Label);
+                }
             }
             if (m_popup)
             {
-                var options = OptionsMenu.Get();
-                if (options != null && options.IsShown() && Root == options.gameObject)
+                var options = Generic.ShownOptionsMenu();
+                if (options != null && Root == options.gameObject)
                 {
                     var label = OptionsBattleLogsLabel();
                     found.Add(new GameButton
@@ -308,6 +374,8 @@ namespace HSAEnhanced
                     if (!titleSkipped && t.Value == title) { titleSkipped = true; continue; }
                     if (labels.Contains(t.Value)) continue;
                     var text = t.Value;
+                    // Advanced is a group heading in OptionsMenu, not an actionable button.
+                    if (Root.GetComponent<OptionsMenu>() != null && string.Equals(text, "Advanced", StringComparison.OrdinalIgnoreCase)) continue;
                     labels.Add(text);
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => Say(text) });
                 }
@@ -344,7 +412,12 @@ namespace HSAEnhanced
             m_next = Time.unscaledTime + 0.5f;
             List<GameButton> items;
             try { items = Items(); } catch (Exception e) { Log.Error(e); return m_menu != null; }
-            if (items.Count == 0 && m_menu == null) return false;
+            if (items.Count == 0 && m_menu == null)
+            {
+                if (m_popup && Root != null && Root.GetComponent<OptionsMenu>() != null)
+                    Log.Info("options trace: active OptionsMenu produced no readable items; texts=" + Ui.TextsUnder(Root).Count);
+                return false;
+            }
             var sig = new System.Text.StringBuilder(Title());
             foreach (var b in items) sig.Append('\n').Append(b.Label);
             if (m_menu != null && sig.ToString() == m_signature) return true;
@@ -355,7 +428,24 @@ namespace HSAEnhanced
             foreach (var b in items)
             {
                 var button = b;
-                menu.AddOption(button.Label, () => { Log.Info("press: " + button.Label); button.Click(); }, button.Label);
+                menu.AddOption(button.Label, () =>
+                {
+                    Log.Info("press: " + button.Label);
+                    var gameMenu = GameMenu.Get();
+                    if (m_popup && gameMenu != null && Root != null && Root.transform.IsChildOf(gameMenu.transform)
+                        && button.Label == Str.Game("GLOBAL_OPTIONS")) Generic.RequestOptionsOpen();
+                    var options = Generic.ShownOptionsMenu();
+                    if (m_popup && options != null && Root == options.gameObject
+                        && (button.Target is CheckBox || button.Target == options)) Generic.RequestOptionsOpen(0.75f);
+                    var dropdown = button.Target as DropdownControl;
+                    if (dropdown != null)
+                    {
+                        Log.Info("options: open dropdown " + button.Label);
+                        dropdown.onUserPressedButton();
+                        return;
+                    }
+                    button.Click();
+                }, button.Label);
             }
             var k = menu.IndexOfKey(key);
             menu.Index = k >= 0 ? k : at;
