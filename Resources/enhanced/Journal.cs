@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using Assets;
 using Hearthstone.DataModels;
 using Hearthstone.Progression;
@@ -165,7 +166,13 @@ namespace HSAEnhanced
             var tray = FindJournalTray();
             if (tray == null) { ShowMain(0); return; }
             var menu = new Core.Menu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
-            var buttons = Ui.ClickablesUnder(tray.gameObject, null);
+            var buttons = Ui.ButtonsIn(tray, new string[0], v => false);
+            var widget = Ref.Get<Component>(tray, "m_widget");
+            if (widget != null)
+                foreach (var button in Ui.ClickablesUnder(widget.gameObject, null))
+                    if (!buttons.Exists(b => b.Object == button.Object)) buttons.Add(button);
+            foreach (var button in Ui.ClickablesUnder(tray.gameObject, null))
+                if (!buttons.Exists(b => b.Object == button.Object)) buttons.Add(button);
             foreach (var button in buttons)
             {
                 var label = Str.Clean(button.Label);
@@ -175,18 +182,54 @@ namespace HSAEnhanced
                 menu.AddOption(capturedLabel, () =>
                 {
                     if (captured.Click != null) captured.Click();
-                    if (capturedLabel.IndexOf("journey", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (capturedLabel.IndexOf("journey", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        capturedLabel.IndexOf("campaign", StringComparison.OrdinalIgnoreCase) >= 0)
                         Core.Jobs.Run(OpenJourneyAfterTabChange());
                     else ShowNativeTabs(Index);
                 });
             }
+            // The native tray hides itself after a tab is selected, so its controls are not
+            // always active in the hierarchy. In that state, discover the game's own tab enum
+            // and use JournalTrayDisplay's native deep-link handler for each value.
+            if (buttons.Count == 0) AddNativeTabValues(menu, tray);
             menu.AddOption(Str.Back, () => Navigation.GoBack());
             Show(menu, at, () => ShowNativeTabs(Index));
         }
 
+        void AddNativeTabValues(Core.Menu menu, JournalTrayDisplay tray)
+        {
+            var type = tray.GetType().GetNestedType("JournalTab", BindingFlags.Public | BindingFlags.NonPublic);
+            if (type == null || !type.IsEnum) return;
+            foreach (var tab in Enum.GetValues(type))
+            {
+                string name = Enum.GetName(type, tab);
+                if (string.IsNullOrEmpty(name) || name == "Unknown") continue;
+                string label = name == "Campaign" ? "Journey" : SplitTabName(name);
+                var selectedTab = tab;
+                var selectedName = name;
+                menu.AddOption(label, () =>
+                {
+                    Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", selectedTab);
+                    if (selectedName == "Campaign") Core.Jobs.Run(OpenJourneyAfterTabChange());
+                    else ShowNativeTabs(Index);
+                });
+            }
+        }
+
+        static string SplitTabName(string name)
+        {
+            var result = new System.Text.StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(name[i])) result.Append(' ');
+                result.Append(name[i]);
+            }
+            return result.ToString();
+        }
+
         IEnumerator OpenJourneyAfterTabChange()
         {
-            yield return new WaitForSecondsRealtime(.35f);
+            yield return new WaitForSecondsRealtime(.75f);
             ShowJourney(0);
         }
 
