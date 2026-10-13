@@ -140,6 +140,9 @@ namespace HSAEnhanced
         internal void ShowMain(int at)
         {
             s_current = this;
+            // The Journal's set of native tabs changes with features and account state. Use the
+            // controls the game actually created instead of maintaining a parallel tab list.
+            if (FindJournalTray() != null) { ShowNativeTabs(at); return; }
             var menu = new Core.Menu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
             if (!Battlegrounds && m_type != Global.RewardTrackType.APPRENTICE) AddEventEntry(menu);
             if (TavernGuideActive()) menu.AddOption(Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowTavernGuide(0));
@@ -148,6 +151,95 @@ namespace HSAEnhanced
             if (!Battlegrounds) menu.AddOption(Journal.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE"), () => ShowCategories(0));
             menu.AddOption(Str.Back, () => Navigation.GoBack());
             Show(menu, at, () => ShowMain(Index));
+        }
+
+        // Keep the game's live tab controls as the source of truth. Scanning only the tray avoids
+        // flattening every text/button in the Journal popup into one noisy accessibility list.
+        static JournalTrayDisplay FindJournalTray()
+        {
+            try { return UnityEngine.Object.FindObjectOfType<JournalTrayDisplay>(); } catch { return null; }
+        }
+
+        void ShowNativeTabs(int at)
+        {
+            var tray = FindJournalTray();
+            if (tray == null) { ShowMain(0); return; }
+            var menu = new Core.Menu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
+            var buttons = Ui.ClickablesUnder(tray.gameObject, null);
+            foreach (var button in buttons)
+            {
+                var label = Str.Clean(button.Label);
+                if (string.IsNullOrWhiteSpace(label)) continue;
+                var captured = button;
+                var capturedLabel = label;
+                menu.AddOption(capturedLabel, () =>
+                {
+                    if (captured.Click != null) captured.Click();
+                    if (capturedLabel.IndexOf("journey", StringComparison.OrdinalIgnoreCase) >= 0)
+                        Core.Jobs.Run(OpenJourneyAfterTabChange());
+                    else ShowNativeTabs(Index);
+                });
+            }
+            menu.AddOption(Str.Back, () => Navigation.GoBack());
+            Show(menu, at, () => ShowNativeTabs(Index));
+        }
+
+        IEnumerator OpenJourneyAfterTabChange()
+        {
+            yield return new WaitForSecondsRealtime(.35f);
+            ShowJourney(0);
+        }
+
+        void ShowJourney(int at)
+        {
+            var book = UnityEngine.Object.FindObjectOfType<SPJQuestBook>();
+            var story = book == null ? null : book.ActiveStoryDataModel;
+            var data = book == null ? null : book.BookDataModel;
+            string title = story == null ? "Journey" : Str.Clean(story.Name);
+            var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
+            if (story == null || data == null)
+            {
+                menu.AddOption("Journey pages are not available yet", () => Say("Journey pages are not available yet."));
+            }
+            else
+            {
+                int left = data.LeftPageIndex, right = data.RightPageIndex;
+                AddJourneyPage(menu, story, left, "Left page");
+                if (right != left) AddJourneyPage(menu, story, right, "Right page");
+                menu.AddOption("Previous pages", () => { book.Page(-1); ShowJourney(Index); });
+                menu.AddOption("Next pages", () => { book.Page(1); ShowJourney(Index); });
+            }
+            menu.AddOption("Journal tabs", () => ShowNativeTabs(0));
+            Show(menu, at, () => ShowJourney(Index));
+        }
+
+        void AddJourneyPage(Core.Menu menu, SpjStoryDataModel story, int index, string side)
+        {
+            if (index < 0 || story.Pages == null || index >= story.Pages.Count) return;
+            var page = story.Pages[index];
+            var lines = new List<string>();
+            var elements = Ref.Get<IEnumerable>(page, "TextElements");
+            if (elements != null)
+                foreach (var element in elements)
+                {
+                    var text = Str.Clean(Ref.Get<string>(element, "Text"));
+                    if (!string.IsNullOrWhiteSpace(text)) lines.Add(text);
+                }
+            var blocks = Ref.Get<IEnumerable>(page, "StoryBlocks");
+            if (blocks != null)
+                foreach (var block in blocks)
+                {
+                    var text = Str.Clean(Ref.Get<string>(block, "Text"));
+                    if (!string.IsNullOrWhiteSpace(text) && !lines.Contains(text)) lines.Add(text);
+                }
+            string heading = side + " " + (index + 1);
+            if (lines.Count == 0) lines.Add(Str.Clean(page.PageType.ToString()));
+            // Put the first passage in the row itself so it is spoken when the Journey opens;
+            // the remaining passages stay available as that row's detail lines.
+            string first = lines[0];
+            var details = new List<string>();
+            for (int i = 1; i < lines.Count; i++) details.Add(lines[i]);
+            menu.AddOption(Str.Join(heading, first), () => Say(Str.Join(lines.ToArray())), lines: () => details);
         }
 
         static bool TavernGuideActive()
