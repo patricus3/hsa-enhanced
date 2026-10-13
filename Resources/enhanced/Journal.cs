@@ -149,7 +149,7 @@ namespace HSAEnhanced
             if (TavernGuideActive()) menu.AddOption(Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowTavernGuide(0));
             if (!TavernGuideActive() || Battlegrounds) menu.AddOption(Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE"), () => ShowQuests(false, 0));
             menu.AddOption(Journal.Word("GLUE_PROGRESSION_REWARDS_TITLE"), () => ShowTrack(MainTrack(), false, 0));
-            if (!Battlegrounds) menu.AddOption(Journal.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE"), () => ShowCategories(0));
+            if (!Battlegrounds) menu.AddOption(FeatsTitle(), () => ShowCategories(0));
             menu.AddOption(Str.Back, () => Navigation.GoBack());
             Show(menu, at, () => ShowMain(Index));
         }
@@ -183,26 +183,77 @@ namespace HSAEnhanced
                 string name = Enum.GetName(type, tab);
                 if (string.IsNullOrEmpty(name) || name == "Unknown") continue;
                 if (!NativeTabAvailable(name, tray)) continue;
-                string label = name == "Campaign" ? "Journey" : SplitTabName(name);
+                string label = NativeTabLabel(name);
                 var selectedTab = tab;
                 var selectedName = name;
                 menu.AddOption(label, () =>
                 {
+                    SelectNativeTab(selectedName, selectedTab, tray);
                     if (selectedName == "Campaign")
                     {
-                        var spj = SPJWidget.Get();
-                        var destinations = spj == null ? null : spj.GetType().GetNestedType("SpjDeepLinkDestination", BindingFlags.Public | BindingFlags.NonPublic);
-                        if (destinations != null && destinations.IsEnum)
-                            Ref.Call(spj, "SelectDestinationViaDeepLink", Enum.Parse(destinations, "Journey"));
                         Core.Jobs.Run(OpenJourneyAfterTabChange());
                     }
-                    else
-                    {
-                        Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", selectedTab);
-                        ShowNativeTabs(Index);
-                    }
+                    else if (selectedName == "Event") ShowEvent(0);
+                    else if (selectedName == "Quest") ShowQuests(false, 0);
+                    else if (selectedName == "Reward") ShowTrack(MainTrack(), false, 0);
+                    else if (selectedName == "Achievment") ShowCategories(0);
+                    else Core.Jobs.Run(ReadNativeJournalPage(label));
                 });
             }
+        }
+
+        void SelectNativeTab(string name, object tab, JournalTrayDisplay tray)
+        {
+            var spj = SPJWidget.Get();
+            var destinations = spj == null ? null : spj.GetType().GetNestedType("SpjDeepLinkDestination", BindingFlags.Public | BindingFlags.NonPublic);
+            string destination = name;
+            if (name == "Campaign") destination = "Journey";
+            else if (name == "Quest") destination = "Quests";
+            else if (name == "Reward") destination = "Rewards";
+            else if (name == "Achievment") destination = "Achievements";
+            if (destinations != null && destinations.IsEnum)
+            {
+                try { if (Ref.Call(spj, "SelectDestinationViaDeepLink", Enum.Parse(destinations, destination))) return; } catch { }
+            }
+            Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", tab);
+        }
+
+        string NativeTabLabel(string name)
+        {
+            string text = null;
+            if (name == "Campaign") text = Str.Word("GLUE_PROGRESSION_JOURNEY_TAB_TITLE", "GLUE_JOURNEY_TITLE");
+            else if (name == "Event") text = Journal.Word("GLUE_PROGRESSION_EVENT_TAB_TITLE");
+            else if (name == "Quest") text = Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE");
+            else if (name == "Reward") text = Journal.Word("GLUE_PROGRESSION_REWARDS_TITLE");
+            else if (name == "Achievment") text = FeatsTitle();
+            else if (name == "Profile") text = Str.Word("GLUE_PROFILE_TAB_TITLE", "GLUE_PROGRESSION_PROFILE_TITLE", "GLUE_PROFILE_TITLE");
+            if (!string.IsNullOrEmpty(text)) return text;
+            if (name == "Campaign") return "Journey";
+            if (name == "Quest") return "Quests";
+            if (name == "Reward") return "Rewards";
+            if (name == "Achievment") return "Feats";
+            return SplitTabName(name);
+        }
+
+        static string FeatsTitle()
+        {
+            var title = Str.Word("GLUE_PROGRESSION_FEATS_TITLE", "GLUE_PROGRESSION_FEATS_TAB_TITLE", "GLUE_PROGRESSION_FEAT_TITLE");
+            return string.IsNullOrEmpty(title) ? "Feats" : title;
+        }
+
+        IEnumerator ReadNativeJournalPage(string title)
+        {
+            yield return new WaitForSecondsRealtime(.75f);
+            var spj = SPJWidget.Get();
+            var texts = spj == null || spj.Widget == null ? new List<KeyValuePair<Component, string>>() : Ui.TextsUnder(spj.Widget.gameObject);
+            var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
+            foreach (var entry in texts)
+            {
+                var line = Str.Clean(entry.Value);
+                if (!string.IsNullOrWhiteSpace(line)) menu.AddOption(line, () => Say(line));
+            }
+            menu.AddOption(Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => ShowNativeTabs(0));
+            Show(menu, 0, () => ReadNativeJournalPage(title));
         }
 
         bool NativeTabAvailable(string name, JournalTrayDisplay tray)
@@ -786,7 +837,7 @@ namespace HSAEnhanced
         {
             var achievements = AchievementManager.Get();
             try { achievements.GetAchievementDataModel(1); } catch { }      // (loads every group's achievements)
-            var menu = new Core.Menu(this, Journal.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE"), () => ShowMain(0));
+            var menu = new Core.Menu(this, FeatsTitle(), () => ShowMain(0));
             Info(menu, Str.Game("GLOBAL_PROGRESSION_POINTS", achievements.TotalPointsExcludeRetired));
             var recent = achievements.GetRecentlyCompletedAchievements();
             if (recent != null && recent.Count > 0)
