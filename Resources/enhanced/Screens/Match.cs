@@ -571,7 +571,7 @@ namespace HSAEnhanced
             {
                 if (o == null || o.Type != Network.Options.Option.OptionType.POWER || o.Main == null || !o.Main.IsValidTarget(hero.GetEntityId())) continue;
                 var e = gs.GetEntity(o.Main.ID);
-                if (e != null && e.IsMinion() && e.IsControlledByFriendlySidePlayer() && e.GetZone() == TAG_ZONE.PLAY && !e.HasUsableTitanAbilities()) list.Add(e);
+                if (e != null && e.IsMinion() && e.IsControlledByFriendlySidePlayer() && e.GetZone() == TAG_ZONE.PLAY && !e.GetRealTimeTitanAbilityUsable()) list.Add(e);
             }
             return list;
         }
