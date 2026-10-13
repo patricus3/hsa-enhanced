@@ -88,6 +88,14 @@ namespace HSAEnhanced
                     }
                 }
                 if (lines.TrueForAll(l => string.IsNullOrEmpty(l))) lines.AddRange(FromData(data, 0));
+                // a card: its class, as the card shows it
+                var card = data as CardRewardData;
+                var def = card == null || string.IsNullOrEmpty(card.CardID) ? null : DefLoader.Get().GetEntityDef(card.CardID);
+                if (def != null)
+                {
+                    int at = lines.FindIndex(l => !string.IsNullOrEmpty(l));
+                    lines.Insert(at < 0 ? 0 : at + 1, CombatCards.ClassLine(def));
+                }
             }
             catch (Exception e) { Log.Error(e); }
             return Clean(lines);

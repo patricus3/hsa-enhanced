@@ -471,15 +471,14 @@ namespace HSAEnhanced
             var nodes = Nodes(track);
             // every reward that can be claimed now and needs no choice, one after the other
             var ready = new List<RewardTrackNodeRewardsDataModel>();
-            foreach (var node in nodes) foreach (var tier in Tiers(node)) if (tier.IsClaimable && !tier.IsClaimed && (tier.Items == null || !tier.Items.ChooseOne)) ready.Add(tier);
+            foreach (var node in nodes) foreach (var tier in Tiers(node)) if (Claimable(track, tier) && (tier.Items == null || !tier.Items.ChooseOne)) ready.Add(tier);
+            LogLevels(track, nodes);
             if (ready.Count > 0)
                 menu.AddOption(Str.Join(Str.Word("GLUE_PROGRESSION_REWARD_TRACK_POPUP_SKIN_CHOICE_CTA"), ready.Count.ToString()), () =>
                 {
                     if (!Journal.Online(this)) return;
                     var first = ready[0];
-                    Log.Info("journal: claim track " + track.RewardTrackId + " level " + first.Level + " " + first.PaidType);
-                    track.ClaimReward(track.RewardTrackId, first.Level, first.PaidType);
-                    RebuildSoon();
+                    if (ClaimTier(track, first, 0)) RebuildSoon();
                 });
             foreach (var n in nodes)
             {
@@ -508,7 +507,7 @@ namespace HSAEnhanced
                 var tier = t;
                 var label = TierLabel(tier, level, current);
                 if (label == null) continue;
-                if (tier.IsClaimable && !tier.IsClaimed)
+                if (Claimable(track, tier))
                     menu.AddOption(label, () => Claim(track, isEvent, tier));
                 else menu.AddOption(label, () => Say(label));
                 if (tier.Items != null && !string.IsNullOrEmpty(tier.Items.LongDescription)) Info(menu, tier.Items.LongDescription);
@@ -524,16 +523,76 @@ namespace HSAEnhanced
             {
                 ChooseOne(tier.Items, Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", tier.Level), () => ShowTrackLevel(track, isEvent, tier.Level, 0), item =>
                 {
-                    Log.Info("journal: claim track " + track.RewardTrackId + " level " + tier.Level + " " + tier.PaidType + " item " + item.AssetId);
-                    track.ClaimReward(track.RewardTrackId, tier.Level, tier.PaidType, item.AssetId);
+                    if (!ClaimTier(track, tier, item.AssetId)) return;
                     m_rebuild = () => ShowTrack(track, isEvent, 0);
                     RebuildSoon();
                 });
                 return;
             }
-            Log.Info("journal: claim track " + track.RewardTrackId + " level " + tier.Level + " " + tier.PaidType);
-            track.ClaimReward(track.RewardTrackId, tier.Level, tier.PaidType);
-            RebuildSoon();
+            if (ClaimTier(track, tier, 0)) RebuildSoon();
+        }
+
+        // a reward there is to claim: marked claimable, and one the game has at that level (the track's
+        // data also makes empty slots, which the game refuses to claim)
+        static bool Claimable(RewardTrack track, RewardTrackNodeRewardsDataModel tier)
+        {
+            if (tier == null || !tier.IsClaimable || tier.IsClaimed) return false;
+            try
+            {
+                var exists = track.GetType().GetMethod("RewardExistsAtLevel", Any);
+                if (exists != null && !(bool)exists.Invoke(track, new object[] { tier.Level, tier.PaidType })) return false;
+            }
+            catch { }
+            return tier.Items != null && tier.Items.Items != null && tier.Items.Items.Count > 0;
+        }
+
+        static readonly HashSet<string> s_loggedTracks = new HashSet<string>();
+
+        // what each level holds, once per track and level (for bug reports)
+        static void LogLevels(RewardTrack track, List<RewardTrackNodeDataModel> nodes)
+        {
+            var key = track.RewardTrackId + ":" + track.TrackDataModel.Level;
+            if (!s_loggedTracks.Add(key)) return;
+            var parts = new List<string>();
+            foreach (var node in nodes)
+                foreach (var tier in Tiers(node))
+                    parts.Add(node.Level + " " + tier.PaidType + " items " + (tier.Items == null || tier.Items.Items == null ? 0 : tier.Items.Items.Count)
+                              + (tier.IsClaimable ? " claimable" : "") + (tier.IsClaimed ? " claimed" : "") + (Claimable(track, tier) ? " REAL" : ""));
+            Log.Info("journal: track " + track.RewardTrackId + " levels: " + string.Join(" | ", parts.ToArray()));
+        }
+
+        static readonly System.Reflection.BindingFlags Any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+
+        // claims one reward the way the game's claim button does: the track of the reward's own type
+        // and id. The game refuses some requests before sending them: said, and why in the log
+        bool ClaimTier(RewardTrack shown, RewardTrackNodeRewardsDataModel tier, int chooseOneItem)
+        {
+            var track = RewardTrackManager.Get().GetRewardTrack((Global.RewardTrackType)tier.RewardTrackType) ?? shown;
+            int id = tier.RewardTrackId != 0 ? tier.RewardTrackId : track.RewardTrackId;
+            bool sent = false;
+            try { sent = track.ClaimReward(id, tier.Level, tier.PaidType, chooseOneItem); } catch (Exception e) { Log.Error(e); }
+            Log.Info("journal: claim track " + id + " (shown " + shown.RewardTrackId + ", reward's track " + track.RewardTrackId + ", type " + tier.RewardTrackType + ") level " + tier.Level + " " + tier.PaidType
+                     + (chooseOneItem != 0 ? " item " + chooseOneItem : "") + ": " + (sent ? "sent" : "refused by the game (" + WhyRefused(track, id, tier) + ")"));
+            if (!sent) Say(Str.Unavailable);
+            return sent;
+        }
+
+        static string WhyRefused(RewardTrack track, int id, RewardTrackNodeRewardsDataModel tier)
+        {
+            var parts = new List<string>();
+            try
+            {
+                var exists = track.GetType().GetMethod("RewardExistsAtLevel", Any);
+                var status = track.GetType().GetMethod("GetRewardStatus", Any);
+                if (exists != null) parts.Add("exists " + exists.Invoke(track, new object[] { tier.Level, tier.PaidType }));
+                parts.Add("track level " + track.TrackDataModel.Level);
+                if (status != null) parts.Add("status " + status.Invoke(track, new object[] { tier.Level, tier.PaidType }));
+                parts.Add("owned " + track.HasOwnedRewardTrackPaidType(tier.PaidType));
+                parts.Add("pending " + track.IsRewardClaimPending);
+                parts.Add("same id " + (id == track.RewardTrackId));
+            }
+            catch (Exception e) { parts.Add(e.GetType().Name); }
+            return string.Join(", ", parts.ToArray());
         }
 
         // a choose one reward: its items, Enter claims the one chosen

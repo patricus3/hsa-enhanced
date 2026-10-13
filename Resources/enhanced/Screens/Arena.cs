@@ -77,7 +77,7 @@ namespace HSAEnhanced
             if (!newStep && sig == m_signature) return true;
             var at = m_menu == null || newStep ? 0 : m_menu.Index;
             var menu = new Menu(this, title, Back);
-            menu.Horizontal = key.StartsWith("bucket:");
+            menu.Horizontal = key.StartsWith("bucket:") || key.StartsWith("draft:");
             foreach (var b in items)
             {
                 var click = b.Click;
@@ -85,6 +85,7 @@ namespace HSAEnhanced
                 else menu.AddOption(b.Label, () => click());
             }
             menu.Index = at;
+            if (!newStep && m_menu != null && m_menu.Index == at) menu.Line = m_menu.Line;
             m_menu = menu;
             m_signature = sig;
             m_key = key;
@@ -199,19 +200,15 @@ namespace HSAEnhanced
                 if (string.IsNullOrEmpty(id)) continue;
                 var premium = Ref.Get<TAG_PREMIUM>(c, "m_premium");
                 var package = Ref.Get<List<string>>(c, "m_packageCardIds");
-                var label = Card(id);
-                if (package != null && package.Count > 0)
-                {
-                    var names = new List<string>();
-                    foreach (var p in package) names.Add(Card(p));
-                    label = Str.Join(label, string.Join(", ", names.ToArray()));
-                }
                 int n = i + 1;
                 bool valid = display.IsChoiceValid(n);
-                if (!valid) label = Str.Join(label, Str.Unavailable);
+                var label = Str.Join(Name(id), valid ? null : Str.Unavailable);
+                var choiceLines = ChoiceLines(id, package);
                 if (package != null && package.Count > 0)
                 {
-                    var bucket = new List<string>(package);
+                    // the group's own card first, then the cards it brings
+                    var bucket = new List<string> { id };
+                    bucket.AddRange(package);
                     Add(items, anchor, label, () =>
                     {
                         if (!valid) { Speech.Say(Str.Unavailable); return; }
@@ -220,14 +217,33 @@ namespace HSAEnhanced
                         m_bucketSlot = slot;
                         m_bucketPremium = premium;
                         m_bucketChoice = n;
-                        m_bucketTitle = Card(id);
+                        m_bucketTitle = Str.Join(Name(id), Str.Clean(Str.Word("GLUE_ARENA_LEGENDARY_BUCKET")));
                         Refresh(true);
                     });
                 }
                 else Add(items, anchor, label, () => Pick(display, slot, n, premium, false, valid));
+                items[items.Count - 1].Lines = choiceLines;
             }
-            DeckItems(items, anchor);
+            DeckItems(items, anchor, true);
             return true;
+        }
+
+        // a choice read as a card (Up/Down): the cards a Legendary group brings first, then its
+        // own lines, then each of those cards in full
+        static List<string> ChoiceLines(string cardId, List<string> package)
+        {
+            var lines = new List<string>();
+            bool group = package != null && package.Count > 0;
+            if (group)
+            {
+                var names = new List<string>();
+                foreach (var p in package) names.Add(Name(p));
+                lines.Add(Str.Join(Str.Clean(Str.Word("GLUE_ARENA_LEGENDARY_BUCKET")), Speech.HumanizeList(names)));
+            }
+            var own = CardLines(cardId);
+            for (int i = 1; i < own.Count; i++) lines.Add(own[i]);
+            if (group) foreach (var p in package) lines.Add(Card(p));
+            return lines;
         }
 
         bool Bucket(DraftDisplay display, ref string key, ref string title, List<GameButton> items)
@@ -323,7 +339,8 @@ namespace HSAEnhanced
 
         // ---- the deck ---------------------------------------------------------------------------
 
-        static void DeckItems(List<GameButton> items, Component anchor)
+        // row: the deck as one item among the draft's cards (its cards are its lines), else read whole
+        static void DeckItems(List<GameButton> items, Component anchor, bool row = false)
         {
             var deck = DM.GetDraftDeck();
             if (deck == null) return;
@@ -331,18 +348,30 @@ namespace HSAEnhanced
             if (slots == null || slots.Count == 0) return;
             var curve = new int[8];
             var lines = new List<string>();
+            var cards = new List<string>();
             foreach (var s in slots)
             {
                 if (s == null) continue;
                 var def = DefLoader.Get().GetEntityDef(s.CardID);
                 if (def == null) continue;
                 curve[Math.Max(0, Math.Min(7, def.GetCost()))] += s.Count;
-                lines.Add(Str.Join(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null, def.GetCost().ToString()));
+                var line = Str.Join(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null, def.GetCost().ToString());
+                lines.Add(line);
+                cards.Add(line);
             }
-            Add(items, anchor, Str.Join(Str.Word("GLUE_ARENA_DECK_TITLE"), deck.GetTotalCardCount().ToString(), string.Join("; ", lines.ToArray())), null);
+            var deckTitle = Str.Join(Str.Word("GLUE_ARENA_DECK_TITLE"), deck.GetTotalCardCount().ToString());
+            Add(items, anchor, row ? deckTitle : Str.Join(deckTitle, string.Join("; ", lines.ToArray())), null);
+            if (row) items[items.Count - 1].Lines = cards;
             var bars = new List<string>();
             for (int i = 0; i < curve.Length; i++) if (curve[i] > 0) bars.Add((i == 7 ? "7+" : i.ToString()) + ": " + curve[i]);
-            Add(items, anchor, Str.Join(Str.Word("GLUE_FORGE_MANATIP_HEADER"), string.Join(", ", bars.ToArray())), null);
+            Add(items, anchor, row ? Str.Word("GLUE_FORGE_MANATIP_HEADER") : Str.Join(Str.Word("GLUE_FORGE_MANATIP_HEADER"), string.Join(", ", bars.ToArray())), null);
+            if (row) items[items.Count - 1].Lines = bars;
+        }
+
+        static string Name(string cardId)
+        {
+            var def = DefLoader.Get().GetEntityDef(cardId);
+            return def == null ? Str.Clean(cardId) : Str.Clean(def.GetName());
         }
 
         // Use the same complete, line-ordered description as card reading elsewhere.

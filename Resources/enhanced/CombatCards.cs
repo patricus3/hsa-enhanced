@@ -60,11 +60,30 @@ namespace HSAEnhanced
                 var rarity = d.GetRarity();
                 if (rarity != TAG_RARITY.FREE && rarity != TAG_RARITY.INVALID)
                     lines.Add(Str.Clean(GameStrings.GetRarityText(d.IsElite() ? TAG_RARITY.LEGENDARY : rarity)));
+                if (!d.IsHeroPower()) lines.Add(ClassLine(d));
                 try { lines.Add(Str.Clean(d.GetFlavorText())); } catch { }
             }
             catch (Exception ex) { Log.Error(ex); }
             lines.RemoveAll(l => string.IsNullOrEmpty(l));
             return lines;
+        }
+
+        // the class as the card shows it: its class, its classes, or all classes
+        internal static string ClassLine(EntityDef def)
+        {
+            if (def == null) return null;
+            try
+            {
+                if (def.IsMultiClass())
+                {
+                    var classes = new List<TAG_CLASS>();
+                    def.GetClasses(classes);
+                    if (classes.Count >= 10) return Str.Word("GLUE_PACK_OPENING_ALL_CLASSES");
+                    if (classes.Count > 1) return Speech.HumanizeList(classes.ConvertAll(c => Str.Clean(GameStrings.GetClassName(c))));
+                }
+                return Str.Clean(GameStrings.GetClassName(def.GetClass()));
+            }
+            catch { return null; }
         }
 
         // a hidden card (the opponent's hand, a face-down card): the game shows it as a card back
@@ -221,6 +240,7 @@ namespace HSAEnhanced
             {
                 lines.Add(ResourcesAndEffects(e));
                 lines.Add(Description(e));
+            lines.AddRange(DarkGift(e));
                 lines.Add(Race(e));
                 if (e.IsMinion()) lines.Add(Cost(e));
                 lines.Add(Rarity(e));
@@ -230,6 +250,7 @@ namespace HSAEnhanced
             {
                 lines.Add(Resources(e));
                 lines.Add(Description(e));
+            lines.AddRange(DarkGift(e));
                 lines.Add(Race(e));
                 lines.Add(Type(e));
                 lines.Add(Rarity(e));
@@ -238,6 +259,7 @@ namespace HSAEnhanced
             lines.Add(Cost(e));
             lines.Add(Resources(e));
             lines.Add(Description(e));
+            lines.AddRange(DarkGift(e));
             lines.Add(Race(e));
             lines.Add(Type(e));
             lines.Add(Rarity(e));
@@ -319,6 +341,32 @@ namespace HSAEnhanced
             catch { }
         }
         #endregion
+
+        // the Dark Gift a card has, as the game shows it: a Discover choice's gift on its banner (its
+        // name and text), a card in hand's gift as its tooltip does ("Dark Gift" and the text, or how
+        // many when there are more than two)
+        internal static List<string> DarkGift(Entity e)
+        {
+            var lines = new List<string>();
+            try
+            {
+                int linked = e.GetTag(GAME_TAG.DARK_GIFT_ENTITY);
+                var gift = linked == 0 ? null : GameState.Get().GetEntity(linked);
+                if (gift != null)
+                {
+                    lines.Add(Str.Join(Str.Word("GLOBAL_KEYWORD_DARKGIFT"), Str.Clean(gift.GetName()), Str.Clean(gift.GetCardTextInHand())));
+                    return lines;
+                }
+                if (e.GetTag(GAME_TAG.HAS_DARK_GIFT) == 0) return lines;
+                var gifts = new List<Entity>();
+                foreach (var en in e.GetDisplayedEnchantments()) if (en != null && en.GetTag(GAME_TAG.IS_NIGHTMARE_BONUS) == 1) gifts.Add(en);
+                if (gifts.Count > 2) lines.Add(Str.Clean(Str.Game("GLOBAL_KEYWORD_DARKGIFT_BONUS_MULTI_TEXT", gifts.Count)));
+                else foreach (var g in gifts) lines.Add(Str.Join(Str.Word("GLOBAL_KEYWORD_DARKGIFT_BONUS"), Str.Clean(g.GetCardTextInHand())));
+            }
+            catch (Exception ex) { Log.Error(ex); }
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            return lines;
+        }
 
         #region K: printed stats and enchantments (ours: from the game's data, no hovering needed)
         internal static List<string> OriginalStats(Card card)

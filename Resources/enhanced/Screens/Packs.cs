@@ -262,24 +262,7 @@ namespace HSAEnhanced
             return name;
         }
 
-        // the class as the pack's card shows it: its class, its classes, or all classes
-        static string ClassLine(EntityDef def)
-        {
-            try
-            {
-                if (def.IsMultiClass())
-                {
-                    var classes = new List<TAG_CLASS>();
-                    def.GetClasses(classes);
-                    if (classes.Count >= 10) return Str.Word("GLUE_PACK_OPENING_ALL_CLASSES");
-                    if (classes.Count > 1) return Speech.HumanizeList(classes.ConvertAll(c => Str.Clean(GameStrings.GetClassName(c))));
-                }
-                return Str.Clean(GameStrings.GetClassName(def.GetClass()));
-            }
-            catch { return null; }
-        }
-
-        // turned: name (edition), class, cost, runes, stats, text, tribe, type, rarity, new; else "1 card"
+        // turned: name (edition) and class, cost, runes, stats, text, tribe, type, rarity, new; else "1 card"
         static List<string> CardLines(PackOpeningCard card)
         {
             if (!card.IsRevealed()) return new List<string> { A("UI_REWARD_TYPE_ONE_CARD") };
@@ -287,13 +270,15 @@ namespace HSAEnhanced
             if (merc != null && merc.Count > 0) return new List<string>(merc);
             var def = card.GetEntityDef();
             if (def == null) return new List<string> { A("UI_REWARD_TYPE_ONE_CARD") };
-            var lines = new List<string> { Edition(Str.Clean(def.GetName()), card.GetPremium()), ClassLine(def) };
+            var classLine = CombatCards.ClassLine(def);
+            var lines = new List<string> { Str.Join(Edition(Str.Clean(def.GetName()), card.GetPremium()), classLine) };
             var rest = CombatCards.Lines(def);
             string flavor = null;
             try { flavor = Str.Clean(def.GetFlavorText()); } catch { }
             for (int i = 1; i < rest.Count; i++)
             {
                 if (!string.IsNullOrEmpty(flavor) && rest[i] == flavor) continue;
+                if (rest[i] == classLine) continue;
                 lines.Add(rest[i]);
             }
             int runes = 0;
