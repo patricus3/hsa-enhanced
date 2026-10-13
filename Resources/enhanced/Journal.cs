@@ -166,32 +166,10 @@ namespace HSAEnhanced
             var tray = FindJournalTray();
             if (tray == null) { ShowMain(0); return; }
             var menu = new Core.Menu(this, Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => Navigation.GoBack());
-            var buttons = Ui.ButtonsIn(tray, new string[0], v => false);
-            var widget = Ref.Get<Component>(tray, "m_widget");
-            if (widget != null)
-                foreach (var button in Ui.ClickablesUnder(widget.gameObject, null))
-                    if (!buttons.Exists(b => b.Object == button.Object)) buttons.Add(button);
-            foreach (var button in Ui.ClickablesUnder(tray.gameObject, null))
-                if (!buttons.Exists(b => b.Object == button.Object)) buttons.Add(button);
-            foreach (var button in buttons)
-            {
-                var label = Str.Clean(button.Label);
-                if (string.IsNullOrWhiteSpace(label)) continue;
-                var captured = button;
-                var capturedLabel = label;
-                menu.AddOption(capturedLabel, () =>
-                {
-                    if (captured.Click != null) captured.Click();
-                    if (capturedLabel.IndexOf("journey", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        capturedLabel.IndexOf("campaign", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Core.Jobs.Run(OpenJourneyAfterTabChange());
-                    else ShowNativeTabs(Index);
-                });
-            }
-            // The native tray hides itself after a tab is selected, so its controls are not
-            // always active in the hierarchy. In that state, discover the game's own tab enum
-            // and use JournalTrayDisplay's native deep-link handler for each value.
-            if (buttons.Count == 0) AddNativeTabValues(menu, tray);
+            // Discover the game's current tab enum, then filter modes that are not tabs in the
+            // regular Journal. The tray hides its buttons during tab changes, so scanning its
+            // transient Unity hierarchy can return an empty or misleading list.
+            AddNativeTabValues(menu, tray);
             menu.AddOption(Str.Back, () => Navigation.GoBack());
             Show(menu, at, () => ShowNativeTabs(Index));
         }
@@ -204,16 +182,46 @@ namespace HSAEnhanced
             {
                 string name = Enum.GetName(type, tab);
                 if (string.IsNullOrEmpty(name) || name == "Unknown") continue;
+                if (!NativeTabAvailable(name, tray)) continue;
                 string label = name == "Campaign" ? "Journey" : SplitTabName(name);
                 var selectedTab = tab;
                 var selectedName = name;
                 menu.AddOption(label, () =>
                 {
-                    Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", selectedTab);
-                    if (selectedName == "Campaign") Core.Jobs.Run(OpenJourneyAfterTabChange());
-                    else ShowNativeTabs(Index);
+                    if (selectedName == "Campaign")
+                    {
+                        var spj = SPJWidget.Get();
+                        var destinations = spj == null ? null : spj.GetType().GetNestedType("SpjDeepLinkDestination", BindingFlags.Public | BindingFlags.NonPublic);
+                        if (destinations != null && destinations.IsEnum)
+                            Ref.Call(spj, "SelectDestinationViaDeepLink", Enum.Parse(destinations, "Journey"));
+                        Core.Jobs.Run(OpenJourneyAfterTabChange());
+                    }
+                    else
+                    {
+                        Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", selectedTab);
+                        ShowNativeTabs(Index);
+                    }
                 });
             }
+        }
+
+        bool NativeTabAvailable(string name, JournalTrayDisplay tray)
+        {
+            var meta = Ref.Get(tray, "m_journalMetaDatamodel");
+            if (name == "Event")
+            {
+                if (Ref.Get<bool>(meta, "m_EventActive") || Ref.Get<bool>(meta, "m_EventTabActive")) return true;
+                try { return SpecialEventManager.Get()?.GetCurrentSpecialEvent(true) != null; } catch { return false; }
+            }
+            if (name == "ApprenticeTrack" || name == "TavernGuide") return false;
+            if (name == "Campaign")
+            {
+                var spj = SPJWidget.Get();
+                if (spj == null) return false;
+                var book = spj.GetSpjBookDataModel();
+                return book == null || book.Stories == null || book.Stories.Count > 0;
+            }
+            return true;
         }
 
         static string SplitTabName(string name)
@@ -229,31 +237,54 @@ namespace HSAEnhanced
 
         IEnumerator OpenJourneyAfterTabChange()
         {
-            yield return new WaitForSecondsRealtime(.75f);
+            SPJQuestBook book = null;
+            for (int i = 0; i < 40; i++)
+            {
+                var spj = SPJWidget.Get();
+                book = spj == null ? null : spj.QuestBook;
+                if (book != null && book.IsOpen && book.BookDataModel != null && book.ActiveStoryDataModel != null) break;
+                yield return new WaitForSecondsRealtime(.5f);
+            }
             ShowJourney(0);
         }
 
         void ShowJourney(int at)
         {
-            var book = UnityEngine.Object.FindObjectOfType<SPJQuestBook>();
+            var spj = SPJWidget.Get();
+            var book = spj == null ? null : spj.QuestBook;
             var story = book == null ? null : book.ActiveStoryDataModel;
             var data = book == null ? null : book.BookDataModel;
             string title = story == null ? "Journey" : Str.Clean(story.Name);
             var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
             if (story == null || data == null)
             {
-                menu.AddOption("Journey pages are not available yet", () => Say("Journey pages are not available yet."));
+                menu.AddOption("Journey is still loading", () => Core.Jobs.Run(OpenJourneyAfterTabChange()));
             }
             else
             {
                 int left = data.LeftPageIndex, right = data.RightPageIndex;
                 AddJourneyPage(menu, story, left, "Left page");
                 if (right != left) AddJourneyPage(menu, story, right, "Right page");
-                menu.AddOption("Previous pages", () => { book.Page(-1); ShowJourney(Index); });
-                menu.AddOption("Next pages", () => { book.Page(1); ShowJourney(Index); });
+                menu.AddOption("Previous pages", () => TurnJourneyPage(book, -1));
+                menu.AddOption("Next pages", () => TurnJourneyPage(book, 1));
             }
             menu.AddOption("Journal tabs", () => ShowNativeTabs(0));
             Show(menu, at, () => ShowJourney(Index));
+        }
+
+        void TurnJourneyPage(SPJQuestBook book, int direction)
+        {
+            if (book == null) return;
+            book.Page(direction);
+            Core.Jobs.Run(RefreshAfterJourneyPageTurn(book, Index));
+        }
+
+        IEnumerator RefreshAfterJourneyPageTurn(SPJQuestBook book, int at)
+        {
+            yield return null;
+            for (int i = 0; i < 100 && Ref.Get<bool>(book, "m_isTurningPage"); i++)
+                yield return new WaitForSecondsRealtime(.1f);
+            if (book != null && book.ActiveStoryDataModel != null) ShowJourney(at);
         }
 
         void AddJourneyPage(Core.Menu menu, SpjStoryDataModel story, int index, string side)
