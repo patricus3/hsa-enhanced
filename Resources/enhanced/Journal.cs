@@ -27,6 +27,15 @@ namespace HSAEnhanced
         static JournalUI s_ui;
 
         internal static bool Active { get { return s_ui != null; } }
+        internal static bool OwnsJourneyScene
+        {
+            get
+            {
+                var scenes = SceneMgr.Get();
+                return s_ui != null && (s_ui.OpeningJourney || s_ui.JourneyOpened)
+                    && scenes != null && scenes.GetMode() == SceneMgr.Mode.JOURNAL;
+            }
+        }
 
         // start of HSA's AccessibleJournal.OnJournalOpened(widget, trackType); true: ours instead
         internal static bool Open()
@@ -52,6 +61,11 @@ namespace HSAEnhanced
         internal static void Close()
         {
             if (s_ui == null) return;
+            if (OwnsJourneyScene)
+            {
+                Log.Info("journal: keeping reader active in JOURNAL scene");
+                return;
+            }
             // The game's close callback can arrive during the journal's opening transition.
             // Keep our menu while the popup is still active; Host.Screens will close it once
             // the popup actually leaves the hierarchy.
@@ -99,6 +113,8 @@ namespace HSAEnhanced
         readonly Global.RewardTrackType m_type;
         Core.Menu m_menu;
         Action m_rebuild;
+        internal bool OpeningJourney;
+        internal bool JourneyOpened;
 
         internal JournalUI(Global.RewardTrackType type) { m_type = type; }
 
@@ -149,7 +165,7 @@ namespace HSAEnhanced
             if (TavernGuideActive()) menu.AddOption(Journal.Word("GLUE_PROGRESSION_TAVERN_GUIDE_TITLE"), () => ShowTavernGuide(0));
             if (!TavernGuideActive() || Battlegrounds) menu.AddOption(Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE"), () => ShowQuests(false, 0));
             menu.AddOption(Journal.Word("GLUE_PROGRESSION_REWARDS_TITLE"), () => ShowTrack(MainTrack(), false, 0));
-            if (!Battlegrounds) menu.AddOption(FeatsTitle(), () => ShowCategories(0));
+            if (!Battlegrounds) menu.AddOption(AchievementsTitle(), () => ShowCategories(0));
             menu.AddOption(Str.Back, () => Navigation.GoBack());
             Show(menu, at, () => ShowMain(Index));
         }
@@ -178,26 +194,38 @@ namespace HSAEnhanced
         {
             var type = tray.GetType().GetNestedType("JournalTab", BindingFlags.Public | BindingFlags.NonPublic);
             if (type == null || !type.IsEnum) return;
-            foreach (var tab in Enum.GetValues(type))
+            Log.Info("journal: discovered native tabs " + string.Join(", ", Enum.GetNames(type)));
+            var seen = new HashSet<ulong>();
+            foreach (var name in Enum.GetNames(type))
             {
-                string name = Enum.GetName(type, tab);
                 if (string.IsNullOrEmpty(name) || name == "Unknown") continue;
+                var tab = Enum.Parse(type, name);
+                ulong value = Convert.ToUInt64(tab);
+                // JournalTab contains aliases. Enum.GetValues repeats their value and
+                // Enum.GetName returns the same canonical name for every alias.
+                if (!seen.Add(value)) continue;
                 if (!NativeTabAvailable(name, tray)) continue;
                 string label = NativeTabLabel(name);
                 var selectedTab = tab;
                 var selectedName = name;
                 menu.AddOption(label, () =>
                 {
-                    SelectNativeTab(selectedName, selectedTab, tray);
+                    Log.Info("journal: selected tab " + selectedName);
                     if (selectedName == "Campaign")
                     {
+                        OpeningJourney = true;
+                        SelectNativeTab(selectedName, selectedTab, tray);
                         Core.Jobs.Run(OpenJourneyAfterTabChange());
                     }
                     else if (selectedName == "Event") ShowEvent(0);
                     else if (selectedName == "Quest") ShowQuests(false, 0);
                     else if (selectedName == "Reward") ShowTrack(MainTrack(), false, 0);
                     else if (selectedName == "Achievment") ShowCategories(0);
-                    else Core.Jobs.Run(ReadNativeJournalPage(label));
+                    else if (selectedName == "Profile")
+                    {
+                        SelectNativeTab(selectedName, selectedTab, tray);
+                        Core.Jobs.Run(ReadNativeJournalPage(label));
+                    }
                 });
             }
         }
@@ -205,7 +233,8 @@ namespace HSAEnhanced
         void SelectNativeTab(string name, object tab, JournalTrayDisplay tray)
         {
             var spj = SPJWidget.Get();
-            var destinations = spj == null ? null : spj.GetType().GetNestedType("SpjDeepLinkDestination", BindingFlags.Public | BindingFlags.NonPublic);
+            var spjType = spj == null ? typeof(SPJWidget) : spj.GetType();
+            var destinations = spjType.GetNestedType("SpjDeepLinkDestination", BindingFlags.Public | BindingFlags.NonPublic);
             string destination = name;
             if (name == "Campaign") destination = "Journey";
             else if (name == "Quest") destination = "Quests";
@@ -213,9 +242,60 @@ namespace HSAEnhanced
             else if (name == "Achievment") destination = "Achievements";
             if (destinations != null && destinations.IsEnum)
             {
-                try { if (Ref.Call(spj, "SelectDestinationViaDeepLink", Enum.Parse(destinations, destination))) return; } catch { }
+                var dest = Enum.Parse(destinations, destination);
+                if (name == "Campaign")
+                {
+                    // The first Journey open needs its destination queued before the
+                    // JOURNAL scene creates SPJWidget.
+                    if (spj == null)
+                    {
+                        var setPending = typeof(SPJWidget).GetMethod(
+                            "SetPendingDeepLinkDestination",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                            null, new Type[] { destinations }, null);
+                        if (setPending == null)
+                        {
+                            Log.Warn("journal: missing SPJWidget.SetPendingDeepLinkDestination");
+                            return;
+                        }
+                        try
+                        {
+                            setPending.Invoke(null, new object[] { dest });
+                            Log.Info("journal: queued Journey deep link before SPJWidget creation");
+                        }
+                        catch (TargetInvocationException e)
+                        {
+                            Log.Error(e);
+                            return;
+                        }
+                        OpenJourneyScene();
+                        return;
+                    }
+                }
+                try { if (Ref.Call(spj, "SelectDestinationViaDeepLink", dest)) return; }
+                catch (TargetInvocationException e) { Log.Error(e); }
             }
             Ref.Call(tray, "ForceChangeActiveTabViaDeepLink", tab);
+        }
+
+        static void OpenJourneyScene()
+        {
+            var sceneMgr = SceneMgr.Get();
+            var modeType = typeof(SceneMgr).GetNestedType("Mode", BindingFlags.Public | BindingFlags.NonPublic);
+            var handlerType = typeof(SceneMgr).GetNestedType("TransitionHandlerType", BindingFlags.Public | BindingFlags.NonPublic);
+            if (sceneMgr == null || modeType == null || handlerType == null)
+            {
+                Log.Warn("journal: cannot open Journey scene; SceneMgr mode types are unavailable");
+                return;
+            }
+            var mode = Enum.Parse(modeType, "JOURNAL");
+            var handler = Enum.Parse(handlerType, "SCENEMGR");
+            if (!Ref.Call(sceneMgr, "SetNextMode", mode, handler, null, null, false))
+            {
+                Log.Warn("journal: SceneMgr.SetNextMode was unavailable");
+                return;
+            }
+            Log.Info("journal: requested JOURNAL scene with pending Journey deep link");
         }
 
         string NativeTabLabel(string name)
@@ -225,20 +305,20 @@ namespace HSAEnhanced
             else if (name == "Event") text = Journal.Word("GLUE_PROGRESSION_EVENT_TAB_TITLE");
             else if (name == "Quest") text = Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE");
             else if (name == "Reward") text = Journal.Word("GLUE_PROGRESSION_REWARDS_TITLE");
-            else if (name == "Achievment") text = FeatsTitle();
+            else if (name == "Achievment") text = AchievementsTitle();
             else if (name == "Profile") text = Str.Word("GLUE_PROFILE_TAB_TITLE", "GLUE_PROGRESSION_PROFILE_TITLE", "GLUE_PROFILE_TITLE");
             if (!string.IsNullOrEmpty(text)) return text;
             if (name == "Campaign") return "Journey";
             if (name == "Quest") return "Quests";
             if (name == "Reward") return "Rewards";
-            if (name == "Achievment") return "Feats";
+            if (name == "Achievment") return "Achievements";
             return SplitTabName(name);
         }
 
-        static string FeatsTitle()
+        static string AchievementsTitle()
         {
-            var title = Str.Word("GLUE_PROGRESSION_FEATS_TITLE", "GLUE_PROGRESSION_FEATS_TAB_TITLE", "GLUE_PROGRESSION_FEAT_TITLE");
-            return string.IsNullOrEmpty(title) ? "Feats" : title;
+            var title = Str.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE", "GLUE_PROGRESSION_ACHIEVEMENTS_TAB_TITLE");
+            return string.IsNullOrEmpty(title) ? "Achievements" : title;
         }
 
         IEnumerator ReadNativeJournalPage(string title)
@@ -265,14 +345,12 @@ namespace HSAEnhanced
                 try { return SpecialEventManager.Get()?.GetCurrentSpecialEvent(true) != null; } catch { return false; }
             }
             if (name == "ApprenticeTrack" || name == "TavernGuide") return false;
-            if (name == "Campaign")
-            {
-                var spj = SPJWidget.Get();
-                if (spj == null) return false;
-                var book = spj.GetSpjBookDataModel();
-                return book == null || book.Stories == null || book.Stories.Count > 0;
-            }
-            return true;
+            // The game can expose Journey before its story/page data has loaded. Keep
+            // its native tab discoverable; selecting it waits for the book to open.
+            if (name == "Campaign") return true;
+            // Only show tabs this reader can currently open. This also keeps future
+            // internal enum values from becoming dead menu entries.
+            return name == "Event" || name == "Quest" || name == "Reward" || name == "Achievment" || name == "Profile";
         }
 
         static string SplitTabName(string name)
@@ -288,15 +366,32 @@ namespace HSAEnhanced
 
         IEnumerator OpenJourneyAfterTabChange()
         {
+            var tabsMenu = m_menu;
             SPJQuestBook book = null;
             for (int i = 0; i < 40; i++)
             {
+                if (!ReferenceEquals(m_menu, tabsMenu)) { OpeningJourney = false; yield break; }
                 var spj = SPJWidget.Get();
                 book = spj == null ? null : spj.QuestBook;
                 if (book != null && book.IsOpen && book.BookDataModel != null && book.ActiveStoryDataModel != null) break;
+                Log.Info("journal: waiting for Journey (" + i + "/40): spj=" + (spj != null) +
+                    ", book=" + (book != null) +
+                    (book != null ? (" open=" + book.IsOpen + " data=" + (book.BookDataModel != null) + " story=" + (book.ActiveStoryDataModel != null)) : ""));
                 yield return new WaitForSecondsRealtime(.5f);
             }
-            ShowJourney(0);
+            Log.Info("journal: Journey book state after tab selection: " +
+                (book == null ? "no book" : "open=" + book.IsOpen + ", data=" + (book.BookDataModel != null) +
+                ", story=" + (book.ActiveStoryDataModel != null)));
+            if (book == null || !book.IsOpen || book.BookDataModel == null || book.ActiveStoryDataModel == null)
+            {
+                OpeningJourney = false;
+                Log.Info("journal: Journey did not become ready; leaving the Journal tabs open");
+                if (UnityEngine.Object.FindObjectOfType<JournalPopup>() == null) Journal.Close();
+                yield break;
+            }
+            OpeningJourney = false;
+            JourneyOpened = true;
+            if (ReferenceEquals(m_menu, tabsMenu)) ShowJourney(0);
         }
 
         void ShowJourney(int at)
@@ -305,21 +400,22 @@ namespace HSAEnhanced
             var book = spj == null ? null : spj.QuestBook;
             var story = book == null ? null : book.ActiveStoryDataModel;
             var data = book == null ? null : book.BookDataModel;
-            string title = story == null ? "Journey" : Str.Clean(story.Name);
-            var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
             if (story == null || data == null)
             {
-                menu.AddOption("Journey is still loading", () => Core.Jobs.Run(OpenJourneyAfterTabChange()));
+                ShowNativeTabs(at);
+                return;
             }
-            else
-            {
-                int left = data.LeftPageIndex, right = data.RightPageIndex;
-                AddJourneyPage(menu, story, left, "Left page");
-                if (right != left) AddJourneyPage(menu, story, right, "Right page");
-                menu.AddOption("Previous pages", () => TurnJourneyPage(book, -1));
-                menu.AddOption("Next pages", () => TurnJourneyPage(book, 1));
-            }
-            menu.AddOption("Journal tabs", () => ShowNativeTabs(0));
+            string title = Str.Clean(story.Name);
+            var menu = new Core.Menu(this,
+                Str.Join(title, "Press Enter on a page to read it. Choose a turn-pages option to continue."),
+                () => ShowNativeTabs(0));
+            int left = data.LeftPageIndex, right = data.RightPageIndex;
+            AddJourneyPage(menu, book, story, left, "Left page");
+            if (right != left) AddJourneyPage(menu, book, story, right, "Right page");
+            int pageCount = story.Pages == null ? 0 : story.Pages.Count;
+            if (left >= 2) menu.AddOption("Turn one spread backward", () => TurnJourneyPage(book, -1));
+            if (right + 1 < pageCount) menu.AddOption("Turn one spread forward", () => TurnJourneyPage(book, 1));
+            menu.AddOption("Return to Journal tabs", () => ShowNativeTabs(0));
             Show(menu, at, () => ShowJourney(Index));
         }
 
@@ -338,33 +434,76 @@ namespace HSAEnhanced
             if (book != null && book.ActiveStoryDataModel != null) ShowJourney(at);
         }
 
-        void AddJourneyPage(Core.Menu menu, SpjStoryDataModel story, int index, string side)
+        void AddJourneyPage(Core.Menu menu, SPJQuestBook book, SpjStoryDataModel story, int index, string side)
         {
             if (index < 0 || story.Pages == null || index >= story.Pages.Count) return;
             var page = story.Pages[index];
             var lines = new List<string>();
-            var elements = Ref.Get<IEnumerable>(page, "TextElements");
-            if (elements != null)
-                foreach (var element in elements)
+            if (page.TextElements != null)
+                foreach (var element in page.TextElements)
                 {
-                    var text = Str.Clean(Ref.Get<string>(element, "Text"));
+                    var text = Str.Clean(element.Text);
                     if (!string.IsNullOrWhiteSpace(text)) lines.Add(text);
                 }
-            var blocks = Ref.Get<IEnumerable>(page, "StoryBlocks");
-            if (blocks != null)
-                foreach (var block in blocks)
+            if (page.StoryBlocks != null)
+                foreach (var block in page.StoryBlocks)
                 {
-                    var text = Str.Clean(Ref.Get<string>(block, "Text"));
+                    var text = Str.Clean(block.Text);
                     if (!string.IsNullOrWhiteSpace(text) && !lines.Contains(text)) lines.Add(text);
                 }
-            string heading = side + " " + (index + 1);
-            if (lines.Count == 0) lines.Add(Str.Clean(page.PageType.ToString()));
-            // Put the first passage in the row itself so it is spoken when the Journey opens;
-            // the remaining passages stay available as that row's detail lines.
-            string first = lines[0];
-            var details = new List<string>();
-            for (int i = 1; i < lines.Count; i++) details.Add(lines[i]);
-            menu.AddOption(Str.Join(heading, first), () => Say(Str.Join(lines.ToArray())), lines: () => details);
+            if (lines.Count == 0 && page.PageType == SpjPageType.MISSION)
+            {
+                var manager = SpjManager.Get();
+                var state = manager == null ? null : manager.GetStoryProgressState(story.ID);
+                var mission = state == null ? null : SpjUtils.CreateMissionDataModelFromState(state);
+                if (mission != null)
+                {
+                    AddJourneyText(lines, mission.Name);
+                    AddJourneyText(lines, mission.Story == null ? null : mission.Story.Text);
+                    AddJourneyText(lines, mission.Description);
+                    AddJourneyText(lines, mission.CompletedDescription);
+                    AddJourneyText(lines, mission.ChoiceDescription);
+                    AddJourneyText(lines, mission.MultiQuotaContextDescription);
+                    if (mission.Stats != null)
+                        foreach (var stat in mission.Stats)
+                            if (stat.ProgressText != null)
+                                foreach (var progress in stat.ProgressText) AddJourneyText(lines, progress);
+                }
+                var data = book.BookDataModel;
+                string field = index == data.RightPageIndex ? "m_rightPageContainer" : "m_leftPageContainer";
+                var container = Ref.Get<SPJPageContainer>(book, field);
+                var missionPage = container == null ? null : container.GetComponentInChildren<SpjMissionPage>(true);
+                var liveMission = missionPage == null ? null : Ref.Get<SpjMissionDataModel>(missionPage, "m_missionDataModel");
+                if (liveMission != null)
+                {
+                    AddJourneyText(lines, liveMission.Name);
+                    AddJourneyText(lines, liveMission.Story == null ? null : liveMission.Story.Text);
+                    AddJourneyText(lines, liveMission.Description);
+                    AddJourneyText(lines, liveMission.CompletedDescription);
+                    AddJourneyText(lines, liveMission.ChoiceDescription);
+                    AddJourneyText(lines, liveMission.MultiQuotaContextDescription);
+                    if (liveMission.Stats != null)
+                        foreach (var stat in liveMission.Stats)
+                            if (stat.ProgressText != null)
+                                foreach (var progress in stat.ProgressText) AddJourneyText(lines, progress);
+                }
+                if (container != null)
+                    foreach (var text in Ui.TextsUnder(container.gameObject))
+                        AddJourneyText(lines, text.Value);
+                Log.Info("journal: mission page " + (index + 1) + " container=" + (container == null ? "none" : container.name)
+                    + " component=" + (missionPage != null) + " model=" + (mission != null)
+                    + " textLines=" + lines.Count);
+            }
+            if (lines.Count == 0)
+                lines.Add("No readable text is available for page " + (index + 1) + ".");
+            string heading = "Read the " + side.ToLowerInvariant() + " (page " + (index + 1) + ")";
+            menu.AddOption(heading, () => Say(Str.Join(lines.ToArray())), lines: () => lines);
+        }
+
+        static void AddJourneyText(List<string> lines, string text)
+        {
+            text = Str.Clean(text);
+            if (!string.IsNullOrWhiteSpace(text) && !lines.Contains(text)) lines.Add(text);
         }
 
         static bool TavernGuideActive()
@@ -837,7 +976,7 @@ namespace HSAEnhanced
         {
             var achievements = AchievementManager.Get();
             try { achievements.GetAchievementDataModel(1); } catch { }      // (loads every group's achievements)
-            var menu = new Core.Menu(this, FeatsTitle(), () => ShowMain(0));
+            var menu = new Core.Menu(this, AchievementsTitle(), () => ShowMain(0));
             Info(menu, Str.Game("GLOBAL_PROGRESSION_POINTS", achievements.TotalPointsExcludeRetired));
             var recent = achievements.GetRecentlyCompletedAchievements();
             if (recent != null && recent.Count > 0)

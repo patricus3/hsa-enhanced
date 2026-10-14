@@ -59,7 +59,7 @@ if ($Auto -and (Get-Process Hearthstone -ErrorAction SilentlyContinue)) {
 
 # --- tools --------------------------------------------------------------------------------
 Use-Dotnet
-Log '== build tools'
+Log 'Build tools'
 Build (Join-Path $Src 'tools\port')
 Build (Join-Path $PSScriptRoot 'speech')
 $PortDll = Join-Path $Src 'tools\port\bin\Release\net8.0\port.dll'
@@ -74,7 +74,7 @@ function Port { & dotnet $PortDll @args; if ($LASTEXITCODE -ne 0) { throw "port 
 function Unresolved { param([string[]]$a) $o = & dotnet $PortDll check @a; $o | Out-File -Encoding utf8 (Join-Path $Work 'check.log'); [int](($o | Select-Object -Last 1) -split ' ')[1] }
 
 # --- the mod: our code, hooked into the game's own Assembly-CSharp ----------------------------
-Log '== building the mod'
+Log 'Building the mod'
 if (Test-Path $Work) { Remove-Item -Recurse -Force $Work }
 New-Item -ItemType Directory -Force (Join-Path $Work 'out') | Out-Null
 $V = Join-Path $Work 'vanilla-Assembly-CSharp.dll'
@@ -105,7 +105,7 @@ if ($Auto -and (Get-Process Hearthstone -ErrorAction SilentlyContinue)) {
     # Battle.net changed the game again meanwhile: the next run builds for that version
     if ((Hash $GameAsm) -ne $current) { Log 'the game changed while waiting; building again on the next run'; exit 0 }
 }
-Log "== install into $Game"
+Log "Installing into $Game"
 if (Get-Process Hearthstone -ErrorAction SilentlyContinue) { throw 'Hearthstone was started during the build. Quit it and try again.' }
 $Acc = Join-Path $Managed 'Accessibility'
 New-Item -ItemType Directory -Force $Acc | Out-Null

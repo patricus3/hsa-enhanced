@@ -89,10 +89,13 @@ namespace HSAEnhanced
         }
 
         // modes with a screen of ours
-        static bool Specific(SceneMgr.Mode mode) { return mode == SceneMgr.Mode.HUB; }
+        static bool Specific(SceneMgr.Mode mode) { return mode == SceneMgr.Mode.HUB || mode == SceneMgr.Mode.JOURNAL; }
 
         static GameObject TopPopup()
         {
+            // Journey is presented by JournalUI. Its native page hierarchy contains unrelated
+            // tabs, card rewards and profile widgets that the generic popup reader would flatten.
+            if (Journal.OwnsJourneyScene) return null;
             // The game exposes its emote tray as a popup too. EmoteUI owns keyboard focus while
             // that tray is open; letting the generic popup reader claim it sends arrows back to
             // the match screen (where the focused hero gets read again).

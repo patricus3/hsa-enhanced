@@ -88,7 +88,7 @@ namespace HSAEnhanced.Core
                                                            || go.GetComponentInChildren<StorePurchaseAuth>(true) != null));
             Generic.Claims.Add(go => BlackMarketWatcher.Active > 0 && (go.GetComponentInChildren<BlackMarketMainPage>(true) != null || go.GetComponentInChildren<BlackMarketItemPopup>(true) != null));
             Generic.Claims.Add(go => LuckyDrawWatcher.Active > 0 && go.GetComponentInChildren<LuckyDrawWidget>(true) != null);
-            Generic.Claims.Add(go => Journal.Active && go.GetComponentInChildren<JournalPopup>(true) != null || go.GetComponentInParent<JournalPopup>() != null);
+            Generic.Claims.Add(go => Journal.Active && (go.GetComponentInChildren<JournalPopup>(true) != null || go.GetComponentInParent<JournalPopup>() != null));
         }
 
         void LateUpdate()

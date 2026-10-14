@@ -14,7 +14,7 @@ export PATH="$HOME/.dotnet:$PATH" DOTNET_ROOT="$HOME/.dotnet" DOTNET_CLI_TELEMET
 
 command -v dotnet >/dev/null || { echo "missing .NET SDK in ~/.dotnet"; exit 1; }
 
-echo "== build tools"
+echo "Build tools"
 dotnet build -c Release -v q "$ROOT/tools/port" >/dev/null
 dotnet build -c Release -v q "$ROOT/tolk" >/dev/null
 port() { dotnet "$ROOT/tools/port/bin/Release/net8.0/port.dll" "$@"; }  # quoted: paths may contain spaces
@@ -25,7 +25,7 @@ clang -dynamiclib -fobjc-arc -O2 -arch arm64 -arch x86_64 -Wno-deprecated-declar
       -I"$ROOT/voiceover/prism" -L"$ROOT/voiceover/prism" -lprism -Wl,-rpath,@loader_path \
       -o "$ROOT/voiceover/libHSAVoiceOver.dylib" "$ROOT/voiceover/hsavoiceover.m"
 
-echo "== building the mod"
+echo "Building the mod"
 rm -rf "$WORK" && mkdir -p "$WORK/out" "$WORK/enh/check"
 cp "$MANAGED/Assembly-CSharp.dll" "$WORK/vanilla-Assembly-CSharp.dll"   # snapshot, in case Battle.net patches mid-build
 cp "$WORK/vanilla-Assembly-CSharp.dll" "$WORK/out/Assembly-CSharp.dll"
@@ -40,7 +40,7 @@ eadd=$(port check "$WORK/enh/check/HSAEnhanced.dll" "$WORK/enh/check" "$MANAGED"
 echo "unresolved: game $base, hooked $enow, mod $eadd"
 { [ "$enow" -le "$base" ] && [ "$eadd" -eq 0 ]; } || { echo "the build has unresolved references, see $WORK/enh/check.log"; exit 1; }
 
-echo "== stage $DEST"
+echo "Installing into $DEST"
 STAGE="$(mktemp -d "$GAME/.hsa-stage.XXXXXX")"
 O="$STAGE/overlay"
 mkdir -p "$O/Hearthstone.app/Contents/Resources/Data/Managed" "$O/Strings" "$O/Accessibility"   # the loader links Accessibility/ into the game

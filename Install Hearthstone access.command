@@ -9,7 +9,7 @@ H="$HOME/Library/Application Support/HearthstoneAccess"
 SRC="$H/src"
 AGENT="$HOME/Library/LaunchAgents/pl.hsa-mac.watch.plist"
 LOADER=/Applications/Hearthstone/HearthstoneAccess/libhsaloader.dylib
-say() { echo; echo "== $*"; }
+say() { echo; echo "$*"; }
 fail() { echo; echo "ERROR: $*"; echo "Installation aborted. Press Enter to close."; read -r _; exit 1; }
 
 say "Hearthstone Access Enhanced for Mac - installation"

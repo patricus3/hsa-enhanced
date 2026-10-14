@@ -10,7 +10,7 @@ $Data = if ($env:HSA_DATA_DIR) { $env:HSA_DATA_DIR } else { Join-Path $env:Progr
 $Task = 'Hearthstone Access rebuild'
 $PromptTask = 'Hearthstone Access prompt'
 
-function Say([string]$t) { Write-Host ''; Log "== $t" }
+function Say([string]$t) { Write-Host ''; Log $t }
 
 try {
     Say 'Hearthstone Access Enhanced for Windows - installation'
