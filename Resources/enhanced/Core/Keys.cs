@@ -35,7 +35,7 @@ namespace HSAEnhanced.Core
             get
             {
                 var tag = "ACCESSIBILITY_INPUT_KEY_OVERRIDE_" + m_code;
-                var name = GameStrings.HasKey(tag) ? GameStrings.Get(tag) : m_code.ToString();
+                var name = GameStrings.HasKey(tag) ? GameStrings.Get(tag) : OwnStrings.Get(tag) ?? m_code.ToString();
                 if (m_ctrl) return Speech.S("ACCESSIBILITY_INPUT_COMMAND_WITH_CTRL_FORMAT", name);
                 if (m_shift) return Speech.S("ACCESSIBILITY_INPUT_COMMAND_WITH_MODIFIER_FORMAT", name);
                 return name;

@@ -58,7 +58,7 @@ namespace HSAEnhanced
 
     class MatchUI : Core.Screen
     {
-        enum Mode { Browse, Place, Choices, Mulligan }
+        enum Mode { Browse, Place, Choices, Mulligan, Assemble }
 
         Mode m_mode;
         Entity m_placing;
@@ -71,6 +71,18 @@ namespace HSAEnhanced
         GameState.ResponseMode? m_lastResponse;
         bool m_mulliganSeen, m_gameOverSaid, m_choicesShown;
         object m_choiceKey;
+        AssembleUIManager m_assembleManager;
+        AssembleChoiceParams[] m_assembleChoiceData;
+        readonly List<AssemblePartChoice> m_assembleChoices = new List<AssemblePartChoice>();
+        int m_assembleAt, m_assembleLine, m_assembleTargetLine;
+        bool m_assembleViewingTarget;
+        string m_assembleTop, m_assembleBottom, m_assembleTargetName;
+
+        sealed class AssemblePartChoice
+        {
+            internal string Name, Top, Bottom;
+            internal UIBButton TopButton, BottomButton;
+        }
 
         internal override bool Alive { get { return Match.InMatch; } }
 
@@ -82,6 +94,23 @@ namespace HSAEnhanced
             var gs = GS;
             if (gs == null) return;
             if (gs.IsGameOver()) { GameOver(); return; }
+
+            var assemble = AssembleUIManager.Get();
+            if (assemble != null && Ref.Get<bool>(assemble, "m_isShowingAssembleUI"))
+            {
+                var choices = Ref.Get<AssembleChoiceParams[]>(assemble, "m_assembleCardProperties");
+                if (m_mode != Mode.Assemble || !ReferenceEquals(m_assembleManager, assemble) || !ReferenceEquals(m_assembleChoiceData, choices))
+                    BeginAssemble(assemble, choices);
+                return;
+            }
+            if (m_mode == Mode.Assemble)
+            {
+                m_mode = Mode.Browse;
+                m_assembleManager = null;
+                m_assembleChoiceData = null;
+                m_assembleChoices.Clear();
+                m_assembleViewingTarget = false;
+            }
 
             // the mulligan
             if (gs.IsMulliganPhase() && MulliganCards() != null && !ChoiceCardMgr.Get().IsFriendlyShown())
@@ -162,6 +191,7 @@ namespace HSAEnhanced
                 if (Keys.Enter.Pressed && end != null && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy) { Log.Info("match: continue"); Core.Click.Peg(end.m_hitbox); return true; }
                 return Combat.StatusKeys(this);
             }
+            if (m_mode == Mode.Assemble) return AssembleKeys();
             if (m_mode == Mode.Mulligan) return MulliganKeys();
             // Z: the pet and the board's clickable decorations
             if (Core.Key.Of(KeyCode.Z).Pressed) { BoardObjects.Open(); return true; }
@@ -234,6 +264,14 @@ namespace HSAEnhanced
         {
             var gs = GS;
             if (gs == null) return "";
+            if (m_mode == Mode.Assemble)
+            {
+                if (m_assembleViewingTarget)
+                    return Speech.S("HSA_ENHANCED_ASSEMBLE_TARGET_HELP", Keys.Up.Name, Keys.Down.Name, Keys.Back.Name, Keys.Enter.Name);
+                return Speech.S("HSA_ENHANCED_ASSEMBLE_PARTS_HELP", Bind.READ_PREV_ITEM.Name, Bind.READ_NEXT_ITEM.Name,
+                    Keys.Up.Name, Keys.Down.Name, Bind.ASSEMBLE_SELECT_TOP.Name, Bind.ASSEMBLE_SELECT_BOTTOM.Name,
+                    Bind.ASSEMBLE_VIEW_TARGET.Name, Keys.Enter.Name);
+            }
             if (m_mode == Mode.Choices && RewindUIManager.IsShowingRewindUI) return Speech.S("ACCESSIBILITY_GAMEPLAY_REWIND_MODE_HELP", Bind.REWIND.Name, Bind.REWIND_KEEP.Name);
             if (m_mode == Mode.Mulligan) return Speech.S(K.GAMEPLAY_MULLIGAN_HELP, Keys.Space.Name, Keys.Enter.Name);
             if (m_confirmEndTurn) return Speech.S(K.GAMEPLAY_CONFIRM_END_TURN_HELP, Keys.Enter.Name, Bind.END_TURN.Name);
@@ -243,6 +281,160 @@ namespace HSAEnhanced
         }
 
         internal override void Read() { }
+        #endregion
+
+        #region Assemble
+        void BeginAssemble(AssembleUIManager manager, AssembleChoiceParams[] choices)
+        {
+            m_mode = Mode.Assemble;
+            m_assembleManager = manager;
+            m_assembleChoiceData = choices;
+            m_assembleChoices.Clear();
+            m_assembleAt = 0;
+            m_assembleLine = 0;
+            m_assembleTargetLine = 0;
+            m_assembleViewingTarget = false;
+
+            var target = Ref.Get<Entity>(manager, "m_assembleTarget");
+            m_assembleTargetName = target == null ? "" : Str.Clean(target.GetName());
+            m_assembleTop = ReadAssembleText(Ref.Get<UberText>(manager, "m_assembleTargetTopHalfText"));
+            m_assembleBottom = ReadAssembleText(Ref.Get<UberText>(manager, "m_assembleTargetBottomHalfText"));
+
+            var cards = ChoiceCardMgr.Get() == null ? null : ChoiceCardMgr.Get().GetFriendlyCards();
+            if (choices != null && cards != null)
+            {
+                for (int i = 0; i < choices.Length && i * 2 < cards.Count; i++)
+                {
+                    var choice = choices[i];
+                    if (choice == null) continue;
+                    var topButton = Ref.Get<UIBButton>(choice, "m_choiceFirstHalfButton");
+                    var bottomButton = Ref.Get<UIBButton>(choice, "m_choiceSecondHalfButton");
+                    var firstHalf = cards[i * 2].GetEntity();
+                    m_assembleChoices.Add(new AssemblePartChoice
+                    {
+                        Name = firstHalf == null ? "" : Str.Clean(firstHalf.GetName()),
+                        Top = ReadAssembleText(Ref.Get<UberText>(choice, "m_choiceFirstHalfText")),
+                        Bottom = ReadAssembleText(Ref.Get<UberText>(choice, "m_choiceSecondHalfText")),
+                        TopButton = topButton,
+                        BottomButton = bottomButton
+                    });
+                }
+            }
+            Log.Info("match: Assemble shown with " + m_assembleChoices.Count + " part choices");
+            Say(Speech.S("ACCESSIBILITY_GAMEPLAY_QUERY_ASSEMBLE", AssembleTargetText()));
+            ReadAssembleChoice();
+        }
+
+        static string ReadAssembleText(UberText text)
+        {
+            return text == null ? "" : Str.Clean(Ui.ShownText(text.Text));
+        }
+
+        string AssembleTargetText()
+        {
+            return Str.Join(m_assembleTop, m_assembleBottom);
+        }
+
+        void ReadAssembleChoice()
+        {
+            if (m_assembleChoices.Count == 0)
+            {
+                Say(Speech.S("ACCESSIBILITY_LIST_NO_ITEMS"));
+                return;
+            }
+            m_assembleAt = Math.Max(0, Math.Min(m_assembleAt, m_assembleChoices.Count - 1));
+            m_assembleLine = 0;
+            var item = m_assembleChoices[m_assembleAt];
+            Say(Speech.S(K.MENU_OPTION_FORMAT, item.Name, m_assembleAt + 1, m_assembleChoices.Count));
+        }
+
+        bool AssembleKeys()
+        {
+            if (m_assembleViewingTarget)
+            {
+                if (Keys.Back.Pressed)
+                {
+                    m_assembleViewingTarget = false;
+                    ReadAssembleChoice();
+                    return true;
+                }
+                if (Keys.Down.Pressed) { m_assembleTargetLine = Math.Min(2, m_assembleTargetLine + 1); Say(AssembleTargetLine(m_assembleTargetLine)); return true; }
+                if (Keys.Up.Pressed) { m_assembleTargetLine = Math.Max(0, m_assembleTargetLine - 1); Say(AssembleTargetLine(m_assembleTargetLine)); return true; }
+                if (Keys.ShiftUp.Pressed) { Say(AssembleTargetLine(m_assembleTargetLine)); return true; }
+            }
+            else
+            {
+                if (Bind.ASSEMBLE_VIEW_TARGET.Pressed)
+                {
+                    m_assembleViewingTarget = true;
+                    m_assembleTargetLine = 0;
+                    Say(AssembleTargetLine(m_assembleTargetLine));
+                    return true;
+                }
+                if (m_assembleChoices.Count > 0 && Bind.ASSEMBLE_SELECT_TOP.Pressed) { SelectAssemblePart(true); return true; }
+                if (m_assembleChoices.Count > 0 && Bind.ASSEMBLE_SELECT_BOTTOM.Pressed) { SelectAssemblePart(false); return true; }
+                if (Keys.Right.Pressed) { if (m_assembleAt + 1 < m_assembleChoices.Count) { m_assembleAt++; ReadAssembleChoice(); } return true; }
+                if (Keys.Left.Pressed) { if (m_assembleAt > 0) { m_assembleAt--; ReadAssembleChoice(); } return true; }
+                if (Keys.Home.Pressed) { m_assembleAt = 0; ReadAssembleChoice(); return true; }
+                if (Keys.End.Pressed) { m_assembleAt = m_assembleChoices.Count - 1; ReadAssembleChoice(); return true; }
+                if (m_assembleChoices.Count > 0 && Keys.Down.Pressed)
+                {
+                    m_assembleLine = Math.Min(2, m_assembleLine + 1);
+                    Say(AssembleChoiceLine(m_assembleChoices[m_assembleAt], m_assembleLine));
+                    return true;
+                }
+                if (m_assembleChoices.Count > 0 && Keys.Up.Pressed)
+                {
+                    m_assembleLine = Math.Max(0, m_assembleLine - 1);
+                    Say(AssembleChoiceLine(m_assembleChoices[m_assembleAt], m_assembleLine));
+                    return true;
+                }
+                if (m_assembleChoices.Count > 0 && Keys.ShiftUp.Pressed)
+                {
+                    Say(AssembleChoiceLine(m_assembleChoices[m_assembleAt], m_assembleLine));
+                    return true;
+                }
+            }
+
+            if (Keys.Enter.Pressed)
+            {
+                var manager = AssembleUIManager.Get();
+                var selected = manager == null ? null : Ref.Get<Entity>(manager, "m_currentAssembleChoice");
+                if (selected == null) { Say(Speech.S("ACCESSIBILITY_GAMEPLAY_ASSEMBLE_NO_SELECTION")); return true; }
+                var confirm = manager == null ? null : Ref.Get<UIBButton>(manager, "m_confirmAssembleChoiceButton");
+                if (confirm != null && confirm.isActiveAndEnabled) Core.Click.Peg(confirm);
+                else Say("The assembly cannot be confirmed right now");
+                return true;
+            }
+            return true;
+        }
+
+        string AssembleChoiceLine(AssemblePartChoice item, int line)
+        {
+            if (line == 1) return item.Top;
+            if (line == 2) return item.Bottom;
+            return Speech.S(K.MENU_OPTION_FORMAT, item.Name, m_assembleAt + 1, m_assembleChoices.Count);
+        }
+
+        string AssembleTargetLine(int line)
+        {
+            if (line == 1) return "Top half: " + m_assembleTop;
+            if (line == 2) return "Bottom half: " + m_assembleBottom;
+            return Str.Join(m_assembleTargetName, AssembleTargetText());
+        }
+
+        void SelectAssemblePart(bool top)
+        {
+            if (m_assembleAt < 0 || m_assembleAt >= m_assembleChoices.Count) return;
+            var item = m_assembleChoices[m_assembleAt];
+            var button = top ? item.TopButton : item.BottomButton;
+            if (button == null || !button.isActiveAndEnabled) { Say("That card part is unavailable"); return; }
+            Core.Click.Peg(button);
+            if (top) m_assembleTop = item.Top;
+            else m_assembleBottom = item.Bottom;
+            Log.Info("match: Assemble selected " + (top ? "top" : "bottom") + " half from " + item.Name);
+            Say(AssembleTargetText());
+        }
         #endregion
 
         #region Acting on a card

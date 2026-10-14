@@ -9,6 +9,7 @@ $Data = if ($env:HSA_DATA_DIR) { $env:HSA_DATA_DIR } else { Join-Path $env:Progr
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Task = 'Hearthstone Access rebuild'
 $PromptTask = 'Hearthstone Access prompt'
+$runningTask = $null
 
 function Say([string]$t) { Write-Host ''; Log $t }
 
@@ -17,6 +18,8 @@ try {
     $Game = Find-Game
     Log "Hearthstone: $Game"
     if (Get-Process Hearthstone -ErrorAction SilentlyContinue) { throw 'Hearthstone is running. Quit the game and run the installer again.' }
+    $runningTask = Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+    if ($runningTask) { Stop-ScheduledTask -InputObject $runningTask -ErrorAction SilentlyContinue }
 
     Say 'Copying mod files'
     $Src = Join-Path $Data 'src'
@@ -33,6 +36,8 @@ try {
 
     Say 'Building the mod for your game version (about a minute)'
     & (Join-Path $Src 'windows\rebuild.ps1')
+    $ReleaseVersion = Join-Path $Src 'release-version.txt'
+    if (Test-Path $ReleaseVersion) { Copy-Item $ReleaseVersion (Join-Path $Data 'release-version.txt') -Force }
 
     Say 'Installing the task that rebuilds the mod after a game update'
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Src\windows\rebuild.ps1`" -Auto"
@@ -61,6 +66,7 @@ try {
     Write-Host 'To remove the mod, use "Uninstall Hearthstone access.bat".'
     exit 0
 } catch {
+    if ($runningTask) { Start-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue }
     Write-Host ''
     Log "ERROR: $($_.Exception.Message)"
     Write-Host "Installation aborted. Logs: $Data\logs"

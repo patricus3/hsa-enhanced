@@ -4,6 +4,8 @@
 # and starts this task at once. This asks the player whether to close Hearthstone so the mod goes back in now,
 # and offers to start the game again once it is in. "No" is remembered for that update.
 $ErrorActionPreference = 'Stop'
+$AllowedProtocols = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+[Net.ServicePointManager]::SecurityProtocol = $AllowedProtocols
 $Data = if ($env:HSA_DATA_DIR) { $env:HSA_DATA_DIR } else { Join-Path $env:ProgramData 'HearthstoneAccess' }
 $waiting = Join-Path $Data 'prompt\waiting.txt'
 $installedHash = Join-Path $Data 'installed.sha256'
@@ -20,6 +22,68 @@ function Ask([string]$text, [uint32]$buttons, [uint32]$icon) {
     return [HsaPrompt.Native]::MessageBoxW([IntPtr]::Zero, $text, $Title, $buttons -bor $icon -bor $MB_SYSTEMMODAL -bor $MB_SETFOREGROUND -bor $MB_TOPMOST)
 }
 $IDYES = 6
+$IDNO = 7
+
+function Check-ReleaseUpdate {
+    $mine = Join-Path $env:LOCALAPPDATA 'HearthstoneAccess'
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    $checked = Join-Path $mine 'release-check.txt'
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $lastCheck = 0L
+    if ((Test-Path $checked) -and [long]::TryParse((Get-Content $checked -Raw).Trim(), [ref]$lastCheck) -and ($now - $lastCheck) -lt 86400) { return }
+
+    try {
+        Set-Content $checked $now
+        $release = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'HearthstoneAccessEnhanced-Updater' } -TimeoutSec 15 `
+            -Uri 'https://api.github.com/repos/patricus3/hsa-enhanced/releases/latest'
+        $latestTag = [string]$release.tag_name
+        if ($latestTag -notmatch '^v?(\d+\.\d+\.\d+)$') { throw "Unexpected release tag: $latestTag" }
+        $latestVersion = [version]($latestTag -replace '^v', '')
+        $versionFile = Join-Path $Data 'release-version.txt'
+        $currentText = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { '0.0.0' }
+        if ($currentText -notmatch '^v?(\d+\.\d+\.\d+)$') { $currentText = '0.0.0' }
+        $currentVersion = [version]($currentText -replace '^v', '')
+        if ($latestVersion -le $currentVersion) { return }
+
+        $offered = Join-Path $mine 'release-offered.txt'
+        if ((Test-Path $offered) -and (Get-Content $offered -Raw).Trim() -eq $latestTag) { return }
+        $answer = Ask "Hearthstone Access Enhanced $latestTag is available (you have $currentText). Install it now? Hearthstone will close if it is running. The official update package will be downloaded from GitHub; Windows may ask you to approve the installer." $MB_YESNO $MB_ICONINFO
+        if ($answer -ne $IDYES) { Set-Content $offered $latestTag; return }
+
+        $asset = $release.assets | Where-Object { $_.name -eq '1.Hearthstone.access.enhanced.for.Windows.zip' } | Select-Object -First 1
+        if (-not $asset) { throw "Windows update package is missing from release $latestTag" }
+        $digest = [string]$asset.digest
+        if ($digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw "Release $latestTag has no valid Windows package checksum" }
+        $expectedHash = $digest.Substring(7)
+        $updates = Join-Path $mine 'updates'
+        New-Item -ItemType Directory -Force $updates | Out-Null
+        $archive = Join-Path $updates "$latestTag-windows.zip"
+        $extract = Join-Path $updates "$latestTag-windows"
+        Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+        Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $archive -TimeoutSec 120
+        if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ine $expectedHash) { throw 'The downloaded Windows update failed its SHA-256 check.' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+        $installer = Get-ChildItem -Path $extract -Recurse -Filter 'install.ps1' | Where-Object { $_.FullName -match '[\\/]Resources[\\/]windows[\\/]install\.ps1$' } | Select-Object -First 1
+        if (-not $installer) { throw 'The downloaded Windows update did not contain its installer.' }
+
+        foreach ($p in Get-Process Hearthstone -ErrorAction SilentlyContinue) { [void]$p.CloseMainWindow() }
+        $until = (Get-Date).AddSeconds(15)
+        while ((Get-Process Hearthstone -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 500 }
+        foreach ($p in Get-Process Hearthstone -ErrorAction SilentlyContinue) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $installer.FullName
+        $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "The installer exited with code $($process.ExitCode)" }
+        Set-Content $offered $latestTag
+        Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $archive -Force -ErrorAction SilentlyContinue
+    } catch {
+        New-Item -ItemType Directory -Force (Join-Path $Data 'logs') | Out-Null
+        Add-Content -Path (Join-Path $Data 'logs\rebuild.log') -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] release update check failed: $($_.Exception.Message)"
+    }
+}
+
+Check-ReleaseUpdate
 
 function GameAssembly {
     $p = Get-Process Hearthstone -ErrorAction SilentlyContinue | Select-Object -First 1

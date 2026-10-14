@@ -93,6 +93,9 @@ namespace HSAEnhanced.Core
         internal static readonly Key REWIND = Key.Of(KeyCode.U);
         internal static readonly Key REWIND_KEEP = Key.Of(KeyCode.J);
         internal static readonly Key REROLL_CHOICE = Key.Of(KeyCode.R);
+        internal static readonly Key ASSEMBLE_VIEW_TARGET = Key.Of(KeyCode.Semicolon);
+        internal static readonly Key ASSEMBLE_SELECT_TOP = Key.Of(KeyCode.LeftBracket);
+        internal static readonly Key ASSEMBLE_SELECT_BOTTOM = Key.Of(KeyCode.RightBracket);
         internal static readonly Key SWITCH_TO_OPPOSING_SUMMONING_SIDE = Key.WithCtrl(KeyCode.UpArrow);
         internal static readonly Key SWITCH_TO_FRIENDLY_SUMMONING_SIDE = Key.WithCtrl(KeyCode.DownArrow);
         internal static readonly Key SEE_TAVERN = Key.Of(KeyCode.T);

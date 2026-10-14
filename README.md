@@ -13,7 +13,7 @@ Every screen is a menu or a list: arrows move, Enter acts, Backspace goes back, 
 - **Main menu** with every button the box shows, your gold and runestones; **Game Modes**, **Adventures** (books, chapters, missions and why one is locked), **Tavern Brawl**, **Arena** (drafts with full card descriptions and navigable legendary buckets, redrafts and deck editing), **Battlegrounds** (lobby, hero choice, recruit phase, collection), **Mercenaries**, **Journal** (native tabs discovered from the game, Journey story pages, quests, reward tracks, events and Feats), **Friends**, **Shop** (gold on every page, real money asks twice), **Black Market**, **Darkmoon Faire Treasures**, **Mail**, **Options** (including text battle logs saved in the game's `battle logs` folder), **Credits**.
 - **My Collection**: the book page by page in its class tabs (Tab: next class, number keys: mana, Ctrl+F: search), every card's lines (cost, stats, text, tribe, type, rarity, copies, set), its view (read it, its flavor and related cards, craft or disenchant), I for keyword explanations; Change set, Crafting with its filters and mass disenchant; decks (edit, new with format and recipe, delete, paste, copy), See deck, sideboards (E.T.C., Zilliax), card backs, coins, heroes, pets.
 - **Packs**: the pack list, opening one or several, cards turned one by one or at random, highlights and the summary by rarity.
-- **Matches**: zones and cards read line by line, Tab to the next playable card, Enter to play, attack and target (with the game's sounds and voice lines), placing minions, Discover, Choose One, Rewind (U / J), mulligan, emotes (Space on your hero on either turn), Y to browse match announcement history, Z for your pet and the board's clickable decorations; announcements of what happens (plays, attacks, triggers, damage, deaths, draws, turns, quest progress, the rope) and of the way in (opponent, who goes first, the coin).
+- **Matches**: zones and cards read line by line, Tab to the next playable card, Enter to play, attack and target (with the game's sounds and voice lines), placing minions, Discover, Choose One, Rewind (U / J), Assemble (F1 gives screen-specific help; left/right brackets select card halves), mulligan, emotes (Space on your hero on either turn), Y to browse match announcement history, Z for your pet and the board's clickable decorations; announcements of what happens (plays, attacks, triggers, damage, deaths, draws, turns, quest progress, the rope) and of the way in (opponent, who goes first, the coin).
 - **End of a match**: the result, rank and stars, win streak, card back progress, reward XP and levels, quests finished.
 - **Popups** of every kind, the Escape menu, quest and achievement toasts, the launch's loading texts.
 
@@ -34,7 +34,7 @@ Requirements: Hearthstone installed with Battle.net, an internet connection duri
 
 Speech goes to your screen reader (NVDA, JAWS and others Prism supports), or to the Windows voices when none is running. If you had the official Hearthstone Access installed, repair the game in Battle.net first (Options > Scan and Repair); an earlier version of this mod is replaced as it is.
 
-A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too). If the game is running at that point, the new build is made meanwhile and a message asks whether to close Hearthstone now and put the mod back; if you say no, it goes back in the moment you close the game. **Uninstall Hearthstone access.bat** removes everything and puts the game's own files back. Logs: `C:\ProgramData\HearthstoneAccess\logs`.
+A scheduled task repairs the mod by itself: it checks every minute and rebuilds after a game update (or a new language, which replaces the game's files too). It also checks GitHub for a release once a day and asks before downloading and launching the installer. If Hearthstone is open, it closes only after you approve the update. **Uninstall Hearthstone access.bat** removes everything and puts the game's own files back. Logs: `C:\ProgramData\HearthstoneAccess\logs`.
 
 ## macOS
 
@@ -44,13 +44,14 @@ Requirements: a Mac with Apple silicon (Intel is untested), Hearthstone in `/App
 2. Open **Install Hearthstone access.command**.
 3. When it says DONE, start the game from Battle.net.
 
-Speech uses the macOS system voice and its settings (Spoken Content), per language. A watcher rebuilds the mod after a game update. **Uninstall Hearthstone access.command** removes it. Logs: `~/Library/Logs/HearthstoneAccess`.
+Speech uses the macOS system voice and its settings (Spoken Content), per language. A watcher rebuilds the mod after a game update and checks GitHub for releases daily while Hearthstone is closed; it asks before downloading and opening the installer. **Uninstall Hearthstone access.command** removes it. Logs: `~/Library/Logs/HearthstoneAccess`.
 
 ## How it works
 
 No Blizzard code is kept in this repository; the mod is compiled on the player's machine against the installed game's own assemblies.
 
 - `Resources/enhanced`: the mod (its core: speech, keys, focus, menus, text input; and every screen), compiled against the game's own class library.
+- `Resources/release-version.txt`: the version packaged in a release; keep it synchronized with the release tag so installed updaters can compare versions.
 - `Resources/tools/port`: a Mono.Cecil tool that hooks the mod into the game's `Assembly-CSharp.dll` (the game's input update and its error messages) and checks every reference against the game's own assemblies.
 - `Resources/strings`: Hearthstone Access's text files (`ACCESSIBILITY.txt` per language), reused with its makers' agreement; texts only, no code.
 - Windows: `Resources/windows` (install, rebuild and uninstall scripts; `speech` is the Prism bridge; `prism` holds `prism.dll`).

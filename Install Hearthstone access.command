@@ -10,9 +10,10 @@ SRC="$H/src"
 AGENT="$HOME/Library/LaunchAgents/pl.hsa-mac.watch.plist"
 LOADER=/Applications/Hearthstone/HearthstoneAccess/libhsaloader.dylib
 say() { echo; echo "$*"; }
-fail() { echo; echo "ERROR: $*"; echo "Installation aborted. Press Enter to close."; read -r _; exit 1; }
+fail() { rm -f "$H/update-installing"; echo; echo "ERROR: $*"; echo "Installation aborted. Press Enter to close."; read -r _; exit 1; }
 
 say "Hearthstone Access Enhanced for Mac - installation"
+trap 'rm -f "$H/update-installing"' EXIT
 # what older versions kept for Hearthstone Access (the mode and menu choices)
 mkdir -p "$H"; rm -f "$H/menus" "$H/mode"
 [ -d /Applications/Hearthstone/Hearthstone.app ] || fail "Hearthstone not found in /Applications/Hearthstone. Install it with Battle.net first."
@@ -40,6 +41,7 @@ rm -rf "$SRC/downloads"
 
 say "Building the mod for your game version (about a minute)"
 "$SRC/rebuild.sh" || fail "Building the mod failed. Details are above."
+if [ -f "$SRC/release-version.txt" ]; then cp "$SRC/release-version.txt" "$H/release-version.txt"; fi
 
 say "Installing the watcher that enables the mod whenever Battle.net starts"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/HearthstoneAccess"
@@ -72,6 +74,7 @@ for a in $(pgrep -f 'Agent.app/Contents/MacOS/Agent'); do
     ps eww -p "$a" -o command= | grep -q "DYLD_INSERT_LIBRARIES=$LOADER" || { kill "$a" 2>/dev/null; sleep 3; kill -9 "$a" 2>/dev/null; }
 done
 
+rm -f "$H/update-installing"
 echo
 echo "DONE. Hearthstone Access Enhanced is installed permanently."
 echo "Start the game from Battle.net as usual (Play). The mod turns on by itself and speaks with your macOS system voice."
