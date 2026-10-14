@@ -20,6 +20,7 @@ namespace HSAEnhanced
     //   state; claim (choose one rewards: the item chosen), through RewardTrack.ClaimReward.
     // - Achievements: categories and their groups with points and progress, each achievement with its
     //   progress, points and reward; claim through AchievementManager.ClaimAchievementReward.
+    // - Journey: story pages and the action to claim a completed mission's rewards.
     // - Tavern Guide (new accounts): its quest sets and quests.
     // Rewards the game grants after a claim are shown by the game's own reward popups.
     static class Journal
@@ -98,6 +99,18 @@ namespace HSAEnhanced
                     if (n.Length > 0) names.Add(item.Quantity > 1 ? item.Quantity + " " + n : n);
                 }
             return names.Count == 0 ? null : Str.Join(names.ToArray());
+        }
+
+        internal static string JourneyRewards(IEnumerable<RewardListDataModel> rewards)
+        {
+            if (rewards == null) return null;
+            var descriptions = new List<string>();
+            foreach (var reward in rewards)
+            {
+                var description = Rewards(reward);
+                if (!string.IsNullOrEmpty(description)) descriptions.Add(description);
+            }
+            return descriptions.Count == 0 ? null : Str.Join(descriptions.ToArray());
         }
 
         internal static bool Online(Core.Screen speaker)
@@ -451,53 +464,136 @@ namespace HSAEnhanced
                     var text = Str.Clean(block.Text);
                     if (!string.IsNullOrWhiteSpace(text) && !lines.Contains(text)) lines.Add(text);
                 }
-            if (lines.Count == 0 && page.PageType == SpjPageType.MISSION)
+            if (page.PageType == SpjPageType.MISSION)
             {
                 var manager = SpjManager.Get();
                 var state = manager == null ? null : manager.GetStoryProgressState(story.ID);
                 var mission = state == null ? null : SpjUtils.CreateMissionDataModelFromState(state);
                 if (mission != null)
-                {
-                    AddJourneyText(lines, mission.Name);
-                    AddJourneyText(lines, mission.Story == null ? null : mission.Story.Text);
-                    AddJourneyText(lines, mission.Description);
-                    AddJourneyText(lines, mission.CompletedDescription);
-                    AddJourneyText(lines, mission.ChoiceDescription);
-                    AddJourneyText(lines, mission.MultiQuotaContextDescription);
-                    if (mission.Stats != null)
-                        foreach (var stat in mission.Stats)
-                            if (stat.ProgressText != null)
-                                foreach (var progress in stat.ProgressText) AddJourneyText(lines, progress);
-                }
+                    AddJourneyMissionDetails(lines, mission);
                 var data = book.BookDataModel;
                 string field = index == data.RightPageIndex ? "m_rightPageContainer" : "m_leftPageContainer";
                 var container = Ref.Get<SPJPageContainer>(book, field);
                 var missionPage = container == null ? null : container.GetComponentInChildren<SpjMissionPage>(true);
                 var liveMission = missionPage == null ? null : Ref.Get<SpjMissionDataModel>(missionPage, "m_missionDataModel");
                 if (liveMission != null)
-                {
-                    AddJourneyText(lines, liveMission.Name);
-                    AddJourneyText(lines, liveMission.Story == null ? null : liveMission.Story.Text);
-                    AddJourneyText(lines, liveMission.Description);
-                    AddJourneyText(lines, liveMission.CompletedDescription);
-                    AddJourneyText(lines, liveMission.ChoiceDescription);
-                    AddJourneyText(lines, liveMission.MultiQuotaContextDescription);
-                    if (liveMission.Stats != null)
-                        foreach (var stat in liveMission.Stats)
-                            if (stat.ProgressText != null)
-                                foreach (var progress in stat.ProgressText) AddJourneyText(lines, progress);
-                }
+                    AddJourneyMissionDetails(lines, liveMission);
                 if (container != null)
                     foreach (var text in Ui.TextsUnder(container.gameObject))
                         AddJourneyText(lines, text.Value);
                 Log.Info("journal: mission page " + (index + 1) + " container=" + (container == null ? "none" : container.name)
                     + " component=" + (missionPage != null) + " model=" + (mission != null)
                     + " textLines=" + lines.Count);
+                bool canComplete = mission != null &&
+                    (mission.MissionState == SpjMissionState.COMPLETION_AVAILABLE_SUCCESS ||
+                     mission.MissionState == SpjMissionState.COMPLETION_AVAILABLE_FAILURE);
+                Log.Info("journal: Journey mission page " + (index + 1) + " pageId=" + page.MissionId +
+                    ", activeMission=" + (mission == null ? "none" : mission.MissionId.ToString()) +
+                    ", state=" + (mission == null ? "none" : mission.MissionState.ToString()) +
+                    ", rewards=" + (mission == null || mission.MissionRewards == null ? 0 : mission.MissionRewards.Count) +
+                    ", canComplete=" + canComplete);
+                if (canComplete)
+                {
+                    string action = mission.MissionState == SpjMissionState.COMPLETION_AVAILABLE_SUCCESS
+                        ? Str.Join("Claim Journey reward", Journal.JourneyRewards(mission.MissionRewards))
+                        : "Complete failed Journey mission";
+                    menu.AddOption(action, () => CompleteJourneyMission(mission));
+                }
+                else if (mission != null && mission.MissionState == SpjMissionState.SELECTION_AVAILABLE)
+                    AddJourneyMissionChoices(menu, mission);
             }
             if (lines.Count == 0)
                 lines.Add("No readable text is available for page " + (index + 1) + ".");
             string heading = "Read the " + side.ToLowerInvariant() + " (page " + (index + 1) + ")";
             menu.AddOption(heading, () => Say(Str.Join(lines.ToArray())), lines: () => lines);
+        }
+
+        static void AddJourneyMissionDetails(List<string> lines, SpjMissionDataModel mission)
+        {
+            AddJourneyText(lines, mission.Name);
+            AddJourneyText(lines, mission.Story == null ? null : mission.Story.Text);
+            AddJourneyText(lines, mission.Description);
+            AddJourneyText(lines, mission.CompletedDescription);
+            AddJourneyText(lines, mission.ChoiceDescription);
+            AddJourneyText(lines, mission.MultiQuotaContextDescription);
+            AddJourneyText(lines, mission.TimeRemainingText);
+            AddJourneyText(lines, Journal.JourneyRewards(mission.MissionRewards));
+            if (mission.Stats != null)
+                foreach (var stat in mission.Stats)
+                    if (stat.ProgressText != null)
+                        foreach (var progress in stat.ProgressText) AddJourneyText(lines, progress);
+        }
+
+        void AddJourneyMissionChoices(Core.Menu menu, SpjMissionDataModel mission)
+        {
+            if (mission.NextMissionOptions == null || mission.NextMissionOptions.Count == 0) return;
+            if (!string.IsNullOrEmpty(mission.ChoiceDescription))
+                menu.AddOption(mission.ChoiceDescription, () => Say(mission.ChoiceDescription));
+            foreach (var option in mission.NextMissionOptions)
+            {
+                if (option == null) continue;
+                var selected = option;
+                var detail = Str.Join(selected.Description, JourneyStats(selected.Stats));
+                menu.AddOption(Str.Join("Select Journey mission", selected.Name, detail),
+                    () => SelectJourneyMission(mission.StoryId, selected.MissionId));
+            }
+        }
+
+        static string JourneyStats(IEnumerable<StatProgressDataModel> stats)
+        {
+            if (stats == null) return null;
+            var lines = new List<string>();
+            foreach (var stat in stats)
+                if (stat != null && stat.ProgressText != null)
+                    foreach (var text in stat.ProgressText)
+                        if (!string.IsNullOrEmpty(Str.Clean(text))) lines.Add(Str.Clean(text));
+            return lines.Count == 0 ? null : Str.Join(lines.ToArray());
+        }
+
+        void SelectJourneyMission(int storyId, int missionId)
+        {
+            if (!Journal.Online(this)) return;
+            var manager = SpjManager.Get();
+            var state = manager == null ? null : manager.GetStoryProgressState(storyId);
+            var mission = state == null ? null : SpjUtils.CreateMissionDataModelFromState(state);
+            bool available = state != null &&
+                state.MissionState == NetCache.SpjStoryState.SpjMissionState.SELECTION_AVAILABLE &&
+                mission != null && mission.NextMissionOptions != null;
+            bool found = false;
+            if (available)
+                foreach (var option in mission.NextMissionOptions)
+                    if (option != null && option.MissionId == missionId) { found = true; break; }
+            if (!found)
+            {
+                Say(Str.Unavailable);
+                ShowJourney(Index);
+                return;
+            }
+            Log.Info("journal: selecting Journey mission " + missionId + " in story " + storyId);
+            manager.SendConfirmMissionSelectRequest(storyId, missionId);
+            int at = Index;
+            m_rebuild = () => ShowJourney(at);
+            RebuildSoon();
+        }
+
+        void CompleteJourneyMission(SpjMissionDataModel mission)
+        {
+            if (!Journal.Online(this)) return;
+            var manager = SpjManager.Get();
+            var state = manager == null ? null : manager.GetStoryProgressState(mission.StoryId);
+            if (state == null || state.MissionId != mission.MissionId ||
+                (state.MissionState != NetCache.SpjStoryState.SpjMissionState.COMPLETION_AVAILABLE_SUCCESS &&
+                 state.MissionState != NetCache.SpjStoryState.SpjMissionState.COMPLETION_AVAILABLE_FAILURE))
+            {
+                Say(Str.Unavailable);
+                ShowJourney(Index);
+                return;
+            }
+            Log.Info("journal: completing Journey mission " + mission.MissionId);
+            manager.SendMissionCompleteRequest(mission.MissionId);
+            int at = Index;
+            m_rebuild = () => ShowJourney(at);
+            RebuildSoon();
         }
 
         static void AddJourneyText(List<string> lines, string text)
