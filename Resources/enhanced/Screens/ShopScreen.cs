@@ -343,7 +343,12 @@ namespace HSAEnhanced
             title = Str.Join(texts.ToArray());
             var ok = auth.m_okButton;
             if (ok != null && ok.gameObject.activeInHierarchy && ok.IsEnabled())
-                items.Add(new GameButton { Target = ok, Label = Str.Word("GLOBAL_OK"), Click = () => Core.Click.Peg(ok) });
+            {
+                var label = Ui.LabelOf(ok);
+                if (label.Length == 0) label = Str.Word("GLOBAL_OKAY", "GLOBAL_OK", "GLOBAL_BUTTON_OK", "GLUE_BUTTON_OK");
+                if (label.Length == 0) label = "OK";
+                items.Add(new GameButton { Target = ok, Label = label, Click = () => Core.Click.Peg(ok) });
+            }
             else
             {
                 var said = title;

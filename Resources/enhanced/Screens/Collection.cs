@@ -1012,55 +1012,6 @@ namespace HSAEnhanced
             return true;
         }
 
-        // the keyword explanations the game shows beside the card (its tooltip panels), from its data
-        static List<string> Keywords(EntityDef d)
-        {
-            var lines = new List<string>();
-            if (d == null) return lines;
-            try
-            {
-                if (d.IsMultiClass())
-                {
-                    var classes = new List<TAG_CLASS>();
-                    d.GetClasses(classes);
-                    if (classes.Count > 1)
-                        lines.Add(Str.Join(Str.Clean(GameStrings.Format("GLOBAL_KEYWORD_MULTICLASS", classes.Count)), Str.Clean(GameStrings.Format("GLOBAL_KEYWORD_MULTICLASS_TEXT", GameStrings.GetClassesNameComma(classes)))));
-                }
-                var records = new List<KeywordTextDbfRecord>(GameDbf.KeywordText.GetRecords());
-                records.Sort((a, b) => a.TooltipInitOrder.CompareTo(b.TooltipInitOrder));
-                int dyn1 = d.GetTag(GAME_TAG.DYNAMIC_KEYWORD1), dyn2 = d.GetTag(GAME_TAG.DYNAMIC_KEYWORD2);
-                foreach (var rec in records)
-                {
-                    if (rec == null) continue;
-                    var tag = (GAME_TAG)rec.Tag;
-                    int value = d.GetTag(tag);
-                    int refValue = d.HasReferencedTag(tag) ? d.GetReferencedTag(tag) : 0;
-                    if (rec.Tag != 0 && (rec.Tag == dyn1 || rec.Tag == dyn2)) refValue = 1;
-                    string name = null, text = null;
-                    if (rec.IsCollectionOnly)
-                    {
-                        if (value != 0 && GameStrings.HasCollectionKeywordText(tag)) { name = GameStrings.Get(rec.Name); text = GameStrings.Get(rec.CollectionText); }
-                    }
-                    else if (value == 0 && refValue == 0) continue;
-                    else if (value != 0 && GameStrings.HasCollectionKeywordText(tag)) { name = GameStrings.GetKeywordName(tag); text = GameStrings.Format(GameStrings.GetCollectionKeywordTextKey(tag), value); }
-                    else if (value != 0 && GameStrings.HasKeywordText(tag)) { if (tag == GAME_TAG.WINDFURY && value > 1) continue; name = GameStrings.GetKeywordName(tag); text = GameStrings.Format(GameStrings.GetKeywordTextKey(tag), value); }
-                    else if (refValue != 0 && GameStrings.HasRefKeywordText(tag)) { name = GameStrings.GetKeywordName(tag); text = GameStrings.Get(GameStrings.GetRefKeywordTextKey(tag)); }
-                    var line = Str.Join(Str.Clean(name), Str.Clean(text));
-                    if (!string.IsNullOrEmpty(line) && !lines.Contains(line)) lines.Add(line);
-                }
-            }
-            catch (Exception e) { Log.Error(e); }
-            return lines;
-        }
-
-        void SayKeywords(EntityDef d)
-        {
-            var lines = Keywords(d);
-            if (lines.Count == 0) { Speech.Say(Speech.S("ACCESSIBILITY_LIST_NO_ITEMS"), true); return; }
-            bool first = true;
-            foreach (var l in lines) { Speech.Say(l, first); first = false; }
-        }
-
         // ---- sideboards (E.T.C., Zilliax, ...) ---------------------------------------------------
 
         static SideboardDeck Sideboard()
@@ -1516,7 +1467,7 @@ namespace HSAEnhanced
                 if (KeyC.Pressed) { OpenBook("deckmenu"); return true; }
                 if (KeyD.Pressed) { var deck = CM.GetEditedDeck(); if (deck != null) { m_key = null; OpenDeck(deck); } return true; }
             }
-            if (KeyI.Pressed) { if (n > 0 && m_at < n && m_list[m_at].Def != null) SayKeywords(m_list[m_at].Def); return true; }
+            if (KeyI.Pressed) { if (n > 0 && m_at < n && m_list[m_at].Def != null) CombatCards.SayKeywords(m_list[m_at].Def); return true; }
             if (Keys.Space.Pressed && n > 0 && m_at < n && m_list[m_at].Space != null) { m_list[m_at].Space(); return true; }
             var lines = Lines();
             if (Keys.ShiftUp.Pressed) { if (lines.Count > 0) Say(lines[Math.Min(m_line, lines.Count - 1)], true); return true; }
@@ -1571,7 +1522,7 @@ namespace HSAEnhanced
             if (m_list != null && m_menu == null) return ListKeys();
             if (m_menu == null) return false;
             if (m_view == "deckmenu" && Keys.Back.Pressed) return true;
-            if (m_view == "cardview" && KeyI.Pressed) { TAG_PREMIUM p; SayKeywords(CraftDef(out p)); return true; }
+            if (m_view == "cardview" && KeyI.Pressed) { TAG_PREMIUM p; CombatCards.SayKeywords(CraftDef(out p)); return true; }
             if (m_view == "deckmenu" && Editing)
             {
                 if (KeyC.Pressed) { OpenBook("deckmenu"); return true; }

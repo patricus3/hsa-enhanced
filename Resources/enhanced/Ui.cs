@@ -16,6 +16,7 @@ namespace HSAEnhanced
         internal string Label;
         internal Action Click;
         internal List<string> Lines;
+        internal string CardId;      // the card it stands for (I reads its keywords)
         internal bool Way;           // the way on from a screen (what Back does there)
         internal GameObject Object { get { return Target.gameObject; } }
 

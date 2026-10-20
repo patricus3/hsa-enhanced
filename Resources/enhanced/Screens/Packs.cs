@@ -422,6 +422,12 @@ namespace HSAEnhanced
             if (Keys.Down.Pressed) { if (m_line + 1 < lines.Count) Say(lines[++m_line], true); return true; }
             if (Keys.Up.Pressed) { if (m_line > 0) Say(lines[--m_line], true); return true; }
             var item = n > 0 && m_at < n ? m_items[m_at] : null;
+            if (Bind.READ_TOOLTIP.Pressed)
+            {
+                var card = item == null ? null : item.Card;
+                if (card != null && card && card.IsRevealed()) CombatCards.SayKeywords(card.GetEntityDef());
+                return true;
+            }
             switch (m_view)
             {
                 case "list":

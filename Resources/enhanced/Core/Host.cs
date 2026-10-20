@@ -86,9 +86,18 @@ namespace HSAEnhanced.Core
             // the shop window and its purchase box are the shop screen's (its "Are you sure?" dialogs are not)
             Generic.Claims.Add(go => (go.GetComponentInChildren<Shop>(true) != null || go.GetComponentInParent<Shop>() != null
                                                            || go.GetComponentInChildren<StorePurchaseAuth>(true) != null));
+            // the game's full-screen input blocker while a purchase goes through: nothing to read, and
+            // taking the keys from the shop would hide the purchase box's OK
+            Generic.Claims.Add(go => ShopScreen.Active && go.name == "Blocker" && UnderFullScreenBlocker(go));
             Generic.Claims.Add(go => BlackMarketWatcher.Active > 0 && (go.GetComponentInChildren<BlackMarketMainPage>(true) != null || go.GetComponentInChildren<BlackMarketItemPopup>(true) != null));
             Generic.Claims.Add(go => LuckyDrawWatcher.Active > 0 && go.GetComponentInChildren<LuckyDrawWidget>(true) != null);
             Generic.Claims.Add(go => Journal.Active && (go.GetComponentInChildren<JournalPopup>(true) != null || go.GetComponentInParent<JournalPopup>() != null));
+        }
+
+        static bool UnderFullScreenBlocker(GameObject go)
+        {
+            for (var t = go.transform; t != null; t = t.parent) if (t.name == "FullScreenBlocker") return true;
+            return false;
         }
 
         void LateUpdate()

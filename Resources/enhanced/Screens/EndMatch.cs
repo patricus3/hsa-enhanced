@@ -282,10 +282,12 @@ namespace HSAEnhanced
         }
     }
 
-    // toasts: quest progress, a quest finished, an achievement
+    // toasts: quest progress, a quest finished, an achievement, the social bar's (a friend online or
+    // offline, a friend's legendary, rank, spectators...)
     static class Toasts
     {
         static readonly HashSet<int> s_seen = new HashSet<int>();
+        static string s_social;     // the social toast said (the game reuses one toast for all of them)
 
         static bool First(MonoBehaviour b)
         {
@@ -311,32 +313,51 @@ namespace HSAEnhanced
                     EndMatch.Tell(null, lines, "toast");
                 }
                 foreach (var t in UnityEngine.Object.FindObjectsByType<global::QuestProgressToast>(FindObjectsSortMode.None))
-                {
-                    if (!First(t)) continue;
-                    TellIf(new List<string> { Text(t.m_questTitle), Text(t.m_questDescription), Text(t.m_questProgressCount) });
-                }
+                    TellOnce(t, new List<string> { Text(t.m_questTitle), Text(t.m_questDescription), Text(t.m_questProgressCount) });
                 foreach (var t in UnityEngine.Object.FindObjectsByType<QuestToast>(FindObjectsSortMode.None))
+                    TellOnce(t, new List<string> { EndMatch.A("TOAST_QUEST_TOAST_TITLE"), Text(t.m_questName), Text(t.m_requirement) });
+                // its text is written after the toast appears, just before its achievement is bound
+                foreach (var t in UnityEngine.Object.FindObjectsByType<Hearthstone.Progression.AchievementToast>(FindObjectsSortMode.None))
                 {
-                    if (!First(t)) continue;
-                    TellIf(new List<string> { EndMatch.A("TOAST_QUEST_TOAST_TITLE"), Text(t.m_questName), Text(t.m_requirement) });
+                    var w = t == null ? null : t.GetComponent<Hearthstone.UI.WidgetTemplate>();
+                    AchievementDataModel a = null;
+                    try { a = w == null ? null : w.GetDataModel<AchievementDataModel>(); } catch { }
+                    if (a != null) TellOnce(t, new List<string> { Text(Ref.Get<UberText>(t, "m_text")) });
                 }
-                foreach (var t in UnityEngine.Object.FindObjectsByType<AchievementToast>(FindObjectsSortMode.None))
-                {
-                    if (!First(t)) continue;
-                    TellIf(new List<string> { Text(Ref.Get<UberText>(t, "m_text")) });
-                }
+                Social();
                 // a Mercenaries task done (or progressed): the task as its card shows it
                 foreach (var t in UnityEngine.Object.FindObjectsByType<Hearthstone.Progression.LettuceVillageTaskToast>(FindObjectsSortMode.None))
                 {
                     var w = t == null ? null : t.GetComponent<Hearthstone.UI.WidgetTemplate>();
                     MercenaryVillageTaskItemDataModel task = null;
                     try { task = w == null ? null : w.GetDataModel<MercenaryVillageTaskItemDataModel>(); } catch { }
-                    if (task == null || string.IsNullOrEmpty(task.Title) || !First(t)) continue;
+                    if (task == null || string.IsNullOrEmpty(task.Title)) continue;
                     bool done = (int)task.TaskStatus == 3 || (task.ProgressNeeded > 0 && task.Progress >= task.ProgressNeeded);
-                    TellIf(new List<string> { done ? Str.Word("GLUE_LETTUCE_VILLAGE_TASK_COMPLETE") : null, Campfire.Describe(task) });
+                    TellOnce(t, new List<string> { done ? Str.Word("GLUE_LETTUCE_VILLAGE_TASK_COMPLETE") : null, Campfire.Describe(task) });
                 }
             }
             catch (Exception e) { Log.Error(e); }
+        }
+
+        static void Social()
+        {
+            var mgr = SocialToastMgr.Get();
+            if (mgr == null || !mgr || !mgr.IsShowingToast()) { s_social = null; return; }
+            var toast = Ref.Get<SocialToast>(mgr, "m_currentToast");
+            var text = toast == null || !toast ? null : Text(Ref.Get<UberText>(toast, "m_text"));
+            if (string.IsNullOrEmpty(text) || text == s_social) return;
+            s_social = text;
+            EndMatch.Tell(null, new List<string> { text }, "toast");
+        }
+
+        // a toast said once, when it has something real to say (its texts can come after it shows)
+        static void TellOnce(MonoBehaviour b, List<string> lines)
+        {
+            if (b == null || !b || !b.gameObject.activeInHierarchy || s_seen.Contains(b.GetInstanceID())) return;
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            if (lines.Count == 0 || (lines.Count == 1 && lines[0] == EndMatch.A("TOAST_QUEST_TOAST_TITLE"))) return;
+            s_seen.Add(b.GetInstanceID());
+            EndMatch.Tell(null, lines, "toast");
         }
 
         // a text the toast shows (not one it hides, nor the prefab's "Uber Text" placeholder)
@@ -345,13 +366,6 @@ namespace HSAEnhanced
             if (t == null || !t.gameObject.activeInHierarchy || t.isHidden()) return null;
             var text = Str.Clean(Ui.ShownText(t.Text));
             return string.IsNullOrEmpty(text) || text.StartsWith("Uber Text", StringComparison.OrdinalIgnoreCase) ? null : text;
-        }
-
-        // a toast with nothing real to say stays quiet
-        static void TellIf(List<string> lines)
-        {
-            lines.RemoveAll(l => string.IsNullOrEmpty(l));
-            if (lines.Count > 1 || (lines.Count == 1 && lines[0] != EndMatch.A("TOAST_QUEST_TOAST_TITLE"))) EndMatch.Tell(null, lines, "toast");
         }
     }
 }

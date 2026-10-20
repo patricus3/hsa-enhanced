@@ -406,25 +406,53 @@ namespace HSAEnhanced
         #endregion
 
         #region I: the card's keywords (ours: from the game's keyword table, no hovering needed)
-        internal static List<string> Keywords(Card card)
+        // the keyword explanations the game shows beside the card (its tooltip panels), from its data
+        internal static List<string> Keywords(EntityBase d)
         {
             var lines = new List<string>();
-            var e = card == null ? null : card.GetEntity();
-            if (e == null) return lines;
+            if (d == null) return lines;
             try
             {
-                foreach (GAME_TAG tag in Enum.GetValues(typeof(GAME_TAG)))
+                if (d.IsMultiClass())
                 {
-                    if (!e.HasTag(tag) || !GameStrings.HasKeywordName(tag)) continue;
-                    var name = Str.Clean(GameStrings.GetKeywordName(tag));
-                    var text = Str.Clean(GameStrings.GetKeywordText(tag));
-                    if (name.Length == 0 || lines.Contains(name)) continue;
-                    lines.Add(name);
-                    if (text.Length > 0) lines.Add(text);
+                    var classes = new List<TAG_CLASS>();
+                    d.GetClasses(classes);
+                    if (classes.Count > 1)
+                        lines.Add(Str.Join(Str.Clean(GameStrings.Format("GLOBAL_KEYWORD_MULTICLASS", classes.Count)), Str.Clean(GameStrings.Format("GLOBAL_KEYWORD_MULTICLASS_TEXT", GameStrings.GetClassesNameComma(classes)))));
+                }
+                var records = new List<KeywordTextDbfRecord>(GameDbf.KeywordText.GetRecords());
+                records.Sort((a, b) => a.TooltipInitOrder.CompareTo(b.TooltipInitOrder));
+                int dyn1 = d.GetTag(GAME_TAG.DYNAMIC_KEYWORD1), dyn2 = d.GetTag(GAME_TAG.DYNAMIC_KEYWORD2);
+                foreach (var rec in records)
+                {
+                    if (rec == null) continue;
+                    var tag = (GAME_TAG)rec.Tag;
+                    int value = d.GetTag(tag);
+                    int refValue = d.HasReferencedTag(tag) ? d.GetReferencedTag(tag) : 0;
+                    if (rec.Tag != 0 && (rec.Tag == dyn1 || rec.Tag == dyn2)) refValue = 1;
+                    string name = null, text = null;
+                    if (rec.IsCollectionOnly)
+                    {
+                        if (value != 0 && GameStrings.HasCollectionKeywordText(tag)) { name = GameStrings.Get(rec.Name); text = GameStrings.Get(rec.CollectionText); }
+                    }
+                    else if (value == 0 && refValue == 0) continue;
+                    else if (value != 0 && GameStrings.HasCollectionKeywordText(tag)) { name = GameStrings.GetKeywordName(tag); text = GameStrings.Format(GameStrings.GetCollectionKeywordTextKey(tag), value); }
+                    else if (value != 0 && GameStrings.HasKeywordText(tag)) { if (tag == GAME_TAG.WINDFURY && value > 1) continue; name = GameStrings.GetKeywordName(tag); text = GameStrings.Format(GameStrings.GetKeywordTextKey(tag), value); }
+                    else if (refValue != 0 && GameStrings.HasRefKeywordText(tag)) { name = GameStrings.GetKeywordName(tag); text = GameStrings.Get(GameStrings.GetRefKeywordTextKey(tag)); }
+                    var line = Str.Join(Str.Clean(name), Str.Clean(text));
+                    if (!string.IsNullOrEmpty(line) && !lines.Contains(line)) lines.Add(line);
                 }
             }
-            catch (Exception ex) { Log.Error(ex); }
+            catch (Exception e) { Log.Error(e); }
             return lines;
+        }
+
+        internal static void SayKeywords(EntityBase d)
+        {
+            var lines = Keywords(d);
+            if (lines.Count == 0) { Speech.Say(Speech.S("ACCESSIBILITY_LIST_NO_ITEMS"), true); return; }
+            bool first = true;
+            foreach (var l in lines) { Speech.Say(l, first); first = false; }
         }
         #endregion
     }

@@ -132,6 +132,10 @@ namespace HSAEnhanced
             var cards = ChoiceCardMgr.Get() == null ? null : ChoiceCardMgr.Get().GetFriendlyCards();
             // a Rewind choice is two buttons (Rewind / Keep) instead of cards on show: a choice all the same
             bool shown = cards != null && cards.Count > 0 && (ChoiceCardMgr.Get().IsFriendlyShown() || RewindUIManager.IsShowingRewindUI);
+            // a Choose One option that needs a target (Wrath...): the game keeps its choice until the
+            // target is chosen, but the cards are gone and the target is what is asked
+            var targeting = gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET || gs.GetResponseMode() == GameState.ResponseMode.OPTION_REVERSE_TARGET;
+            if (shown && targeting && ChoiceCardMgr.Get().HasSubOption()) shown = false;
             if (shown && (!m_choicesShown || !Equals(m_choiceKey, cards[0])))
             {
                 m_choicesShown = true;
@@ -183,6 +187,14 @@ namespace HSAEnhanced
             var gs = GS;
             if (gs == null) return false;
             if (Bind.SEE_HISTORY.Pressed) { HistoryLog.Open(); return true; }
+            // I: the keywords of the card looked at (a choice or mulligan card in those lists)
+            if (Bind.READ_TOOLTIP.Pressed && m_mode != Mode.Assemble)
+            {
+                var looked = (m_mode == Mode.Choices || m_mode == Mode.Mulligan) && m_at >= 0 && m_at < m_list.Count ? m_list[m_at] : Combat.FocusedCard;
+                var e = looked == null ? null : looked.GetEntity();
+                if (e != null) CombatCards.SayKeywords(e);
+                return true;
+            }
 
             // the end screen: Enter goes on
             var end = EndGameScreen.Get();

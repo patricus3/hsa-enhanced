@@ -61,6 +61,7 @@ namespace HSAEnhanced
         TAG_PREMIUM m_bucketPremium;
         int m_bucketChoice;
         string m_bucketTitle;
+        List<string> m_cards = new List<string>();     // each option's card (null: not a card)
 
         internal override bool Alive { get { return Arena.InArena; } }
 
@@ -87,6 +88,7 @@ namespace HSAEnhanced
             menu.Index = at;
             if (!newStep && m_menu != null && m_menu.Index == at) menu.Line = m_menu.Line;
             m_menu = menu;
+            m_cards = items.ConvertAll(b => b.CardId);
             m_signature = sig;
             m_key = key;
             if (newStep)
@@ -223,6 +225,7 @@ namespace HSAEnhanced
                 }
                 else Add(items, anchor, label, () => Pick(display, slot, n, premium, false, valid));
                 items[items.Count - 1].Lines = choiceLines;
+                items[items.Count - 1].CardId = id;
             }
             DeckItems(items, anchor, true);
             return true;
@@ -255,7 +258,7 @@ namespace HSAEnhanced
                 var id = cardId;
                 var lines = CardLines(id);
                 var label = lines.Count > 0 ? lines[0] : Str.Clean(id);
-                items.Add(new GameButton { Target = display, Label = label, Lines = lines.Count > 1 ? lines.GetRange(1, lines.Count - 1) : new List<string>(), Click = () =>
+                items.Add(new GameButton { Target = display, Label = label, CardId = id, Lines = lines.Count > 1 ? lines.GetRange(1, lines.Count - 1) : new List<string>(), Click = () =>
                 {
                     m_bucket = null;
                     Pick(m_bucketDisplay, m_bucketSlot, m_bucketChoice, m_bucketPremium, true, true);
@@ -315,6 +318,7 @@ namespace HSAEnhanced
                     Log.Info("arena: out of the deck " + id);
                     if (!display.RemoveCardFromArenaDeck(id, premium)) Speech.Say(Str.Unavailable);
                 });
+                items[items.Count - 1].CardId = id;
             }
             // the redraft cards waiting outside the deck
             foreach (var o in slots)
@@ -331,6 +335,7 @@ namespace HSAEnhanced
                     Log.Info("arena: into the deck " + card.CardId);
                     if (!display.AddCardToArenaDeck(sl)) Speech.Say(Str.Unavailable);
                 });
+                items[items.Count - 1].CardId = card.CardId;
             }
             Add(items, anchor, Str.Word("GLUE_ARENA_REVERT_BUTTON"), () => { Log.Info("arena: revert"); display.HandleArenaDraftScreenEvent("REVERT_CHANGES_PRESSED"); });
             Add(items, anchor, Str.Word("GLOBAL_DONE"), () => { Log.Info("arena: deck edit done"); display.HandleArenaDraftScreenEvent("EDITDECK_PRESSED"); });
@@ -408,6 +413,13 @@ namespace HSAEnhanced
             {
                 m_bucket = null;
                 Refresh(true);
+                return true;
+            }
+            if (m_menu != null && Bind.READ_TOOLTIP.Pressed)
+            {
+                var id = m_menu.Index >= 0 && m_menu.Index < m_cards.Count ? m_cards[m_menu.Index] : null;
+                var def = string.IsNullOrEmpty(id) ? null : DefLoader.Get().GetEntityDef(id);
+                if (def != null) CombatCards.SayKeywords(def);
                 return true;
             }
             return m_menu != null && m_menu.HandleKey();
