@@ -512,8 +512,41 @@ namespace HSAEnhanced
             Log.Info("match: " + e.GetName() + (keyword == GAME_TAG.TAG_NOT_SET ? "" : " (" + keyword + ")"));
             Combat.WhenReady(this, e, () =>
             {
-                if (!InputManager.Get().DoNetworkResponse(e, true, keyword)) Log.Info("match: the game refused " + e.GetName());
+                if (!InputManager.Get().DoNetworkResponse(e, true, keyword)) { Log.Info("match: the game refused " + e.GetName()); return; }
+                if (e.GetZone() == TAG_ZONE.PLAY && e.IsCardButton()) ButtonClicked(e);
             });
+        }
+
+        // What the game's own click on the hero power (or a game-mode button) does once it is accepted
+        // (InputManager.HandleClickOnCardInBattlefield): its animation and sound at once, shown as used and
+        // the mana spent; with a target to choose, the target arrow first. Without this the power was only
+        // sent to the server and its animation came late, or only after the target.
+        static void ButtonClicked(Entity e)
+        {
+            try
+            {
+                var im = InputManager.Get();
+                var card = e.GetCard();
+                var gs = GS;
+                if (im == null || card == null || gs == null) return;
+                bool exhaustable = e.IsHeroPower() || (e.IsGameModeButton() && e.HasTag(GAME_TAG.GAME_MODE_BUTTON_IS_EXHAUSTABLE));
+                if (gs.IsInTargetMode())
+                {
+                    var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
+                    if (reticle != null) reticle.CreateFriendlyTargetArrow(e, false, true, null, false, true);
+                    if (gs.CanTargetCardsInHand()) Ref.Call(im, "StartBattleCryEffect", e);
+                    Ref.Set(im, "m_targettingHeroPower", true);
+                    Ref.Call(im, "ActivatePlaySpell", card);
+                    return;
+                }
+                if (!e.HasSubCards()) Ref.Call(im, "ActivatePlaySpell", card);
+                if (exhaustable)
+                {
+                    if (!e.HasTag(GAME_TAG.HEROPOWER_UNLIMITED_USES)) e.SetTagAndHandleChange(GAME_TAG.EXHAUSTED, 1);
+                    Ref.Call(im, "PredictSpentMana", e);
+                }
+            }
+            catch (Exception ex) { Log.Error(ex); }
         }
 
         static readonly MethodInfo ErrorDescription = typeof(PlayErrors).GetMethod("GetErrorDescription", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
@@ -674,7 +707,8 @@ namespace HSAEnhanced
                     if (button != null && button.gameObject.activeInHierarchy) { Core.Click.Peg(button); return true; }
                 }
                 if (GS.IsInSubOptionMode()) InputManager.Get().HandleClickOnSubOption(e);
-                else InputManager.Get().DoNetworkResponse(e);
+                // the game's own click on a choice card (its sound, a trinket's choice, the error when refused)
+                else if (!Ref.Call(InputManager.Get(), "HandleClickOnChoice", e)) InputManager.Get().DoNetworkResponse(e);
                 return true;
             }
             if (Keys.Back.Pressed && GS.IsInSubOptionMode()) { Cancel(); return true; }
