@@ -24,6 +24,15 @@ namespace HSAEnhanced
             set { try { PlayerPrefs.SetInt(SaveBattleLogsKey, value ? 1 : 0); PlayerPrefs.Save(); } catch (Exception e) { Log.Error(e); } }
         }
 
+        const string GameSpeedKey = "HSAEnhanced.GameSpeed";
+
+        // Hearthstone Access's game speed level, 1 to 10 (F11 / F12; Pacing)
+        internal static int GameSpeed
+        {
+            get { try { return PlayerPrefs.GetInt(GameSpeedKey, 3); } catch { return 3; } }
+            set { try { PlayerPrefs.SetInt(GameSpeedKey, value); PlayerPrefs.Save(); } catch (Exception e) { Log.Error(e); } }
+        }
+
         // our own navigation and card reading in matches (Combat): HSA's is no longer used (2026-10-01)
         internal static bool OwnCombat { get { return true; } }
 

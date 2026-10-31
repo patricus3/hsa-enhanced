@@ -213,6 +213,7 @@ namespace HSAEnhanced
             Log.Info("announce: " + text);
             HistoryLog.Add(text);
             Speech.Say(text);
+            Pacing.Wait(text);
         }
 
         static string A(string key, params object[] args) { return Speech.S("ACCESSIBILITY_" + key, args); }

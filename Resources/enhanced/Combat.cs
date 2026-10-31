@@ -39,6 +39,9 @@ namespace HSAEnhanced
         // the card the player is on (null: none)
         internal static Card FocusedCard { get { return s_card; } }
 
+        // nothing looked at any more (Hearthstone Access drops a hand card's focus when a target is asked)
+        internal static void DropFocus() { s_card = null; s_hasZone = false; s_lines.Clear(); }
+
         // spoken as the match screen (ours, or Hearthstone Access's gameplay screen)
         static void Say(object gameplay, string text)
         {
