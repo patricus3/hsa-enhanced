@@ -585,13 +585,44 @@ namespace HSAEnhanced
             m_mode = Mode.Browse;
             if (e == null || zone == null) return;
             if (!m_opposingSide && zone.GetCards().Count >= 7) { Say(Str.Word("GAMEPLAY_PlayErrors_REQ_MINION_CAP")); return; }
-            int pos = ZoneMgr.Get().PredictZonePosition(e, zone, m_slot);
-            Log.Info("match: place " + e.GetName() + " at " + m_slot + (m_opposingSide ? " (opponent's side)" : ""));
+            int slot = m_slot;
+            int pos = ZoneMgr.Get().PredictZonePosition(e, zone, slot);
+            Log.Info("match: place " + e.GetName() + " at " + slot + (m_opposingSide ? " (opponent's side)" : ""));
             Combat.WhenReady(this, e, () =>
             {
                 GS.SetSelectedOptionPosition(pos);
-                if (!InputManager.Get().DoNetworkResponse(e, true, m_opposingSide ? GAME_TAG.DISGUISED : GAME_TAG.TAG_NOT_SET)) Log.Info("match: the game refused the placement");
+                if (!InputManager.Get().DoNetworkResponse(e, true, m_opposingSide ? GAME_TAG.DISGUISED : GAME_TAG.TAG_NOT_SET)) { Log.Info("match: the game refused the placement"); return; }
+                PutOnBoard(e, zone, slot, pos);
             });
+        }
+        // What the game's own drop does once the play is accepted (InputManager.DropHeldMinionLikeCard): the
+        // card goes onto the board at once, with its landing animation and sound, the mana is shown spent,
+        // and a Battlecry that needs a target gets its arrow, the minion waiting on the board for it (Backspace
+        // returns it to the hand, as the game's cancel does). Without this the minion stayed in the hand until
+        // the target was chosen and only then appeared.
+        static void PutOnBoard(Entity e, Zone zone, int slot, int pos)
+        {
+            try
+            {
+                var im = InputManager.Get();
+                var card = e == null ? null : e.GetCard();
+                if (im == null || card == null || !(card.GetZone() is ZoneHand)) return;
+                var hand = Ref.Get<ZoneHand>(im, "m_myHandZone");
+                if (hand != null) hand.OnCardWithReplacementsPlayed(card);
+                Ref.Set(im, "m_lastZoneChangeList", ZoneMgr.Get().AddPredictedLocalZoneChange(card, zone, slot, pos));
+                Ref.Call(im, "PredictSpentMana", e);
+                var play = zone as ZonePlay;
+                if (play != null) play.OnMagneticPlay(card, pos);
+                var gs = GS;
+                if ((e.IsMinion() || e.IsLocation()) && gs != null && gs.EntityHasTargets(e))
+                {
+                    var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
+                    if (reticle != null) reticle.CreateFriendlyTargetArrow(e, true, true);
+                    Ref.Set(im, "m_battlecrySourceCard", card);
+                    if (gs.CanTargetCardsInHand()) Ref.Call(im, "StartBattleCryEffect", e);
+                }
+            }
+            catch (Exception ex) { Log.Error(ex); }
         }
         #endregion
 
