@@ -314,7 +314,7 @@ namespace HSAEnhanced
         string NativeTabLabel(string name)
         {
             string text = null;
-            if (name == "Campaign") text = Str.Word("GLUE_PROGRESSION_JOURNEY_TAB_TITLE", "GLUE_JOURNEY_TITLE");
+            if (name == "Campaign") text = Str.Word("GLUE_PROGRESSION_JOURNEY_TITLE", "GLUE_SPJ_REWARD_SCROLL_TITLE", "GLUE_PROGRESSION_JOURNEY_TAB_TITLE", "GLUE_JOURNEY_TITLE");
             else if (name == "Event") text = Journal.Word("GLUE_PROGRESSION_EVENT_TAB_TITLE");
             else if (name == "Quest") text = Journal.Word("GLUE_PROGRESSION_QUESTS_TITLE");
             else if (name == "Reward") text = Journal.Word("GLUE_PROGRESSION_REWARDS_TITLE");
@@ -419,16 +419,14 @@ namespace HSAEnhanced
                 return;
             }
             string title = Str.Clean(story.Name);
-            var menu = new Core.Menu(this,
-                Str.Join(title, "Press Enter on a page to read it. Choose a turn-pages option to continue."),
-                () => ShowNativeTabs(0));
+            var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
             int left = data.LeftPageIndex, right = data.RightPageIndex;
-            AddJourneyPage(menu, book, story, left, "Left page");
-            if (right != left) AddJourneyPage(menu, book, story, right, "Right page");
+            AddJourneyPage(menu, book, story, left);
+            if (right != left) AddJourneyPage(menu, book, story, right);
             int pageCount = story.Pages == null ? 0 : story.Pages.Count;
-            if (left >= 2) menu.AddOption("Turn one spread backward", () => TurnJourneyPage(book, -1));
-            if (right + 1 < pageCount) menu.AddOption("Turn one spread forward", () => TurnJourneyPage(book, 1));
-            menu.AddOption("Return to Journal tabs", () => ShowNativeTabs(0));
+            if (left >= 2) menu.AddOption(Core.Speech.S("HSA_ENHANCED_PREVIOUS_PAGE"), () => TurnJourneyPage(book, -1));
+            if (right + 1 < pageCount) menu.AddOption(Core.Speech.S("HSA_ENHANCED_NEXT_PAGE"), () => TurnJourneyPage(book, 1));
+            menu.AddOption(Str.Word("GLOBAL_BACK"), () => ShowNativeTabs(0));
             Show(menu, at, () => ShowJourney(Index));
         }
 
@@ -447,7 +445,7 @@ namespace HSAEnhanced
             if (book != null && book.ActiveStoryDataModel != null) ShowJourney(at);
         }
 
-        void AddJourneyPage(Core.Menu menu, SPJQuestBook book, SpjStoryDataModel story, int index, string side)
+        void AddJourneyPage(Core.Menu menu, SPJQuestBook book, SpjStoryDataModel story, int index)
         {
             if (index < 0 || story.Pages == null || index >= story.Pages.Count) return;
             var page = story.Pages[index];
@@ -495,16 +493,16 @@ namespace HSAEnhanced
                 if (canComplete)
                 {
                     string action = mission.MissionState == SpjMissionState.COMPLETION_AVAILABLE_SUCCESS
-                        ? Str.Join("Claim Journey reward", Journal.JourneyRewards(mission.MissionRewards))
-                        : "Complete failed Journey mission";
+                        ? Str.Join(Str.Word("GLUE_SPJ_REWARD_CLAIM_LABEL").TrimEnd(':', ' '), Journal.JourneyRewards(mission.MissionRewards))
+                        : Str.Word("GLUE_SPJ_BUTTON_LABEL_CONTINUE");
                     menu.AddOption(action, () => CompleteJourneyMission(mission));
                 }
                 else if (mission != null && mission.MissionState == SpjMissionState.SELECTION_AVAILABLE)
                     AddJourneyMissionChoices(menu, mission);
             }
             if (lines.Count == 0)
-                lines.Add("No readable text is available for page " + (index + 1) + ".");
-            string heading = "Read the " + side.ToLowerInvariant() + " (page " + (index + 1) + ")";
+                lines.Add(Core.Speech.S("ACCESSIBILITY_LIST_NO_ITEMS"));
+            string heading = Str.Game("GLUE_COLLECTION_PAGE_NUM", index + 1) ?? (index + 1).ToString();
             menu.AddOption(heading, () => Say(Str.Join(lines.ToArray())), lines: () => lines);
         }
 
@@ -534,7 +532,7 @@ namespace HSAEnhanced
                 if (option == null) continue;
                 var selected = option;
                 var detail = Str.Join(selected.Description, JourneyStats(selected.Stats));
-                menu.AddOption(Str.Join("Select Journey mission", selected.Name, detail),
+                menu.AddOption(Str.Join(Str.Word("GLUE_CHOOSE"), selected.Name, detail),
                     () => SelectJourneyMission(mission.StoryId, selected.MissionId));
             }
         }

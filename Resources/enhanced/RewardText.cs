@@ -35,6 +35,20 @@ namespace HSAEnhanced
             var lines = new List<string>();
             try
             {
+                // dust, gold and packs with their amounts ("30 arcane dust", "2 card packs, <set>"): the
+                // game's own reward text has no pack count, and "Arcane Dust: 30" read badly
+                var dust = data as ArcaneDustRewardData;
+                if (dust != null) { lines.Add(Speech.S("ACCESSIBILITY_UI_REWARD_N_ARCANE_DUST", dust.Amount)); return Clean(lines); }
+                var gold = data as GoldRewardData;
+                if (gold != null) { lines.Add(Speech.S("ACCESSIBILITY_UI_REWARD_N_GOLD", gold.Amount)); return Clean(lines); }
+                var pack = data as BoosterPackRewardData;
+                if (pack != null)
+                {
+                    string packName = null;
+                    try { packName = Str.Clean(BoosterPackUtils.GetBoosterPackName(GameDbf.Booster.GetRecord(pack.Id))); } catch { }
+                    lines.Add(Str.Join(Speech.S("ACCESSIBILITY_UI_REWARD_N_CARD_PACKS", Math.Max(1, pack.Count)), packName));
+                    return Clean(lines);
+                }
                 // a new ability: the mercenary and the ability, as the reward's cards show them
                 var unlock = data as MercenariesAbilityUnlockRewardData;
                 if (unlock != null)

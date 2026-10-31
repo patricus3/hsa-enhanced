@@ -418,7 +418,7 @@ namespace HSAEnhanced
                 if (selected == null) { Say(Speech.S("ACCESSIBILITY_GAMEPLAY_ASSEMBLE_NO_SELECTION")); return true; }
                 var confirm = manager == null ? null : Ref.Get<UIBButton>(manager, "m_confirmAssembleChoiceButton");
                 if (confirm != null && confirm.isActiveAndEnabled) Core.Click.Peg(confirm);
-                else Say("The assembly cannot be confirmed right now");
+                else Say(Speech.S("HSA_ENHANCED_ASSEMBLE_CANNOT_CONFIRM"));
                 return true;
             }
             return true;
@@ -443,7 +443,7 @@ namespace HSAEnhanced
             if (m_assembleAt < 0 || m_assembleAt >= m_assembleChoices.Count) return;
             var item = m_assembleChoices[m_assembleAt];
             var button = top ? item.TopButton : item.BottomButton;
-            if (button == null || !button.isActiveAndEnabled) { Say("That card part is unavailable"); return; }
+            if (button == null || !button.isActiveAndEnabled) { Say(Speech.S("HSA_ENHANCED_ASSEMBLE_PART_UNAVAILABLE")); return; }
             Core.Click.Peg(button);
             if (top) m_assembleTop = item.Top;
             else m_assembleBottom = item.Bottom;
