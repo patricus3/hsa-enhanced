@@ -7,9 +7,10 @@ namespace HSAEnhanced
 {
     // The way into a match, said as it happens (our own design, from the game's state):
     //   "Searching for an Opponent" while matchmaking; "Loading" when the match loads
-    //   who you play against (a player: name and class; the computer: its hero and class)
-    //   how many cards you start with, who goes first
-    //   after your mulligan: "Waiting for opponent" while they choose; the cards you drew instead
+    //   who you play against (a player: name and class; the computer: its hero and class), then the
+    //     starting hand at once (Match reads its first card; how many there are it says as "1 of 3")
+    //   after your mulligan: "Waiting for opponent" while they choose; then, as the match starts, who
+    //     goes first and the cards you drew instead
     //   "You get the coin" when it comes; and in any turn "10 seconds remaining" as the rope burns
     static class GameStart
     {
@@ -69,14 +70,8 @@ namespace HSAEnhanced
                 try { name = Str.Clean(them.GetName()); } catch { }
                 if (string.IsNullOrEmpty(name) || mgr.IsAI()) name = Str.Clean(hero.GetName());
                 Say(A("GAMEPLAY_VS_PLAYER_ANNOUNCEMENT", name, cls));
-                Say(A("GAMEPLAY_YOU_START_WITH_N_CARDS", start.Count));
                 s_startHand = new HashSet<int>();
                 foreach (var c in start) if (c != null && c.GetEntity() != null) s_startHand.Add(c.GetEntity().GetEntityId());
-            }
-            if (!s_saidFirst && s_saidVs)
-            {
-                s_saidFirst = true;
-                Say(A(me.HasTag(GAME_TAG.FIRST_PLAYER) ? "GAMEPLAY_YOU_GO_FIRST" : "GAMEPLAY_OPPONENT_GOES_FIRST"));
             }
 
             // your choice made, theirs still pending
@@ -91,6 +86,12 @@ namespace HSAEnhanced
             {
                 s_mulliganDone = true;
                 s_mulliganEndedAt = Time.unscaledTime;
+                // who goes first: said as the match starts, not before the starting hand
+                if (!s_saidFirst)
+                {
+                    s_saidFirst = true;
+                    Say(A(me.HasTag(GAME_TAG.FIRST_PLAYER) ? "GAMEPLAY_YOU_GO_FIRST" : "GAMEPLAY_OPPONENT_GOES_FIRST"));
+                }
                 if (s_startHand != null)
                 {
                     var drawn = new List<string>();
