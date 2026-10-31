@@ -46,6 +46,8 @@ namespace HSAEnhanced.Core
         bool m_down, m_wasDown;
         bool m_pointing;
         Vector3 m_realAt;      // the real mouse when pointing began
+        int m_button;          // the button of the click under way: 0 left, 1 right
+        bool m_hideAfter;      // after this click the mouse goes out of the way (0,0)
 
         static Vector3 ScreenOf(GameObject go)
         {
@@ -86,6 +88,37 @@ namespace HSAEnhanced.Core
 
         internal static void StopPointing() { if (s_mouse != null) s_mouse.m_pointing = false; }
 
+        // the keyboard is used again in a match: the mouse is ours again (it stopped when the real one moved)
+        internal static void TakeOver() { Ensure(); BeginPointing(); }
+
+        internal static bool Pointing { get { return s_mouse != null && s_mouse.m_pointing; } }
+
+        // a click under way: the mouse stays where it was put until it is over
+        internal static bool Clicking { get { return s_mouse != null && s_mouse.m_step != 0; } }
+
+        internal static Vector3 Position { get { return s_mouse == null ? Vector3.zero : s_mouse.m_position; } }
+
+        // out of the way, as Hearthstone Access "hides" it: screen (0,0)
+        internal static void Hide()
+        {
+            Ensure();
+            s_mouse.m_position = Vector3.zero;
+            BeginPointing();
+        }
+
+        // A click where the mouse is now (left: 0, right: 1): down for one frame, then up, as Hearthstone
+        // Access clicked. The game then does what a sighted player's click there does.
+        internal static void ClickHere(int button, bool hideAfter = false)
+        {
+            Ensure();
+            BeginPointing();
+            s_mouse.m_button = button;
+            s_mouse.m_hideAfter = hideAfter;
+            s_mouse.m_step = 1;
+            s_mouse.m_frame = Time.frameCount;
+            Log.Info("virtual mouse: " + (button == 1 ? "right" : "left") + " click at " + s_mouse.m_position);
+        }
+
         static void Ensure()
         {
             if (s_mouse != null) return;
@@ -107,6 +140,8 @@ namespace HSAEnhanced.Core
             screen = (drawer != null ? drawer : cam) != null ? (drawer != null ? drawer : cam).WorldToScreenPoint(at) : Vector3.zero;
             screen.z = 0;
             s_mouse.m_position = screen;
+            s_mouse.m_button = 0;
+            s_mouse.m_hideAfter = false;
             s_mouse.m_step = 1;
             s_mouse.m_frame = Time.frameCount;
             Log.Info("virtual mouse: click " + go.name + " at " + screen);
@@ -130,7 +165,7 @@ namespace HSAEnhanced.Core
                 case 1: m.m_down = true; m.m_step = 2; break;
                 case 2: m.m_down = false; m.m_step = 3; break;
                 case 3: m.m_step = 4; break;
-                default: m.m_step = 0; break;
+                default: m.m_step = 0; if (m.m_hideAfter) { m.m_hideAfter = false; m.m_position = Vector3.zero; } break;
             }
         }
 
@@ -141,8 +176,8 @@ namespace HSAEnhanced.Core
         public bool GetKey(KeyCode keycode, out bool value) { value = false; return false; }
         public bool GetKeyDown(KeyCode keycode, out bool value) { value = false; return false; }
         public bool GetKeyUp(KeyCode keycode, out bool value) { value = false; return false; }
-        public bool GetMouseButton(int button, out bool value) { value = button == 0 && m_down; return Active; }
-        public bool GetMouseButtonDown(int button, out bool value) { value = button == 0 && m_down && !m_wasDown; return Active; }
-        public bool GetMouseButtonUp(int button, out bool value) { value = button == 0 && !m_down && m_wasDown; return Active; }
+        public bool GetMouseButton(int button, out bool value) { value = button == m_button && m_down; return Active; }
+        public bool GetMouseButtonDown(int button, out bool value) { value = button == m_button && m_down && !m_wasDown; return Active; }
+        public bool GetMouseButtonUp(int button, out bool value) { value = button == m_button && !m_down && m_wasDown; return Active; }
     }
 }

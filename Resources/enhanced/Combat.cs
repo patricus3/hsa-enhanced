@@ -147,7 +147,6 @@ namespace HSAEnhanced
             }
             Say(gameplay, first);
             SyncHsa(gameplay, card);
-            Point(card);
         }
 
         // The game's mouse rests on the card looked at, as a sighted player's would: its hover (the hand

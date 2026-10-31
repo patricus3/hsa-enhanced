@@ -7,12 +7,17 @@ using UnityEngine;
 
 namespace HSAEnhanced
 {
-    // Without Hearthstone Access: the match screen (docs/combat-spec-2-actions.md, our own way).
-    // Navigation and card reading are Combat's (part 1). Actions call the game directly, no mouse:
-    // - Enter on a card: what the game allows for it now (play, attack, use), or why not;
-    //   a minion or location from hand first asks where (Left/Right, Home/End, numbers; Ctrl+Up/Down
-    //   for a card that can go to the opponent's side), Enter places it;
-    // - target mode: "Choose a target", Tab / zone keys, Enter, Backspace cancels;
+    // Without Hearthstone Access: the match screen, acting as Hearthstone Access did
+    // (docs/combat-spec-2-actions.md): with the game's own mouse handling. Our virtual mouse rests every
+    // frame on the card looked at (a hand card on its mana gem), Enter is a left click there and
+    // Backspace a right click, so the game does exactly what a sighted player's clicks do (picking a card
+    // up, the minions making room, the arrows, the sounds, its errors). Navigation and card reading are
+    // Combat's (part 1).
+    // - Enter on a card: a click on it. A hand card is picked up: a minion or location then asks where
+    //   (Left/Right, Home/End, numbers; Ctrl+Up/Down for a card that can go to the opponent's side), the
+    //   mouse goes over that place and Enter drops it there; another card asks "Play card?" (unless it
+    //   needs a target), Enter plays it. A card in play: attack, hero power, location as clicked;
+    // - target mode: "Choose a target", Tab / zone keys, Enter clicks the target, Backspace cancels;
     // - Choose One and Discover-type choices: a list (Left/Right, Home/End, Tab), Enter chooses;
     //   Choose One can be cancelled with Backspace; Tab hides / shows a Discover;
     // - mulligan: the starting cards, Space marks (the game's own state is read back), Enter confirms;
@@ -58,7 +63,7 @@ namespace HSAEnhanced
 
     class MatchUI : Core.Screen
     {
-        enum Mode { Browse, Place, Choices, Mulligan, Assemble }
+        enum Mode { Browse, Place, Playing, Choices, Mulligan, Assemble }
 
         Mode m_mode;
         Entity m_placing;
@@ -70,6 +75,7 @@ namespace HSAEnhanced
         bool m_confirmEndTurn;
         GameState.ResponseMode? m_lastResponse;
         bool m_mulliganSeen, m_gameOverSaid, m_choicesShown, m_loggedChoiceMode, m_loggedShown;
+        bool m_mulliganListening;     // the starting hand is being chosen (after Enter the mouse is hidden)
         object m_choiceKey;
         AssembleUIManager m_assembleManager;
         AssembleChoiceParams[] m_assembleChoiceData;
@@ -118,12 +124,14 @@ namespace HSAEnhanced
                 if (!m_mulliganSeen && MulliganReady())
                 {
                     m_mulliganSeen = true;
+                    m_mulliganListening = true;
                     m_mode = Mode.Mulligan;
                     m_list = new List<Card>(MulliganCards());
                     m_at = 0; m_line = 0;
                     Say(Str.Join(Str.Word("GAMEPLAY_MULLIGAN_STARTING_HAND"), Str.Word("GAMEPLAY_MULLIGAN_SUBTITLE")));
                     ReadListItem();
                 }
+                UpdateMouse(gs);
                 return;
             }
             if (m_mode == Mode.Mulligan) { m_mode = Mode.Browse; m_list.Clear(); }
@@ -173,8 +181,132 @@ namespace HSAEnhanced
                     Say(Speech.S(K.GAMEPLAY_CHOOSE_TARGET));
                 m_lastResponse = response;
             }
-            if (m_mode == Mode.Place && (m_placing == null || !gs.IsInMainOptionMode() || m_placing.GetZone() != TAG_ZONE.HAND)) { if (m_grabbed) CancelPlacement(); else m_mode = Mode.Browse; }
+            HeldCard(gs);
             if (m_confirmEndTurn && !gs.IsInMainOptionMode()) m_confirmEndTurn = false;
+            UpdateMouse(gs);
+        }
+
+        // A card picked up by the click (the game's held card) decides what follows, as in Hearthstone
+        // Access: a minion or location asks where ("Summon at the right?"), anything else "Play card?" unless
+        // it needs a target (then the game asks for it while the card is held over the board)
+        void HeldCard(GameState gs)
+        {
+            var im = InputManager.Get();
+            var held = im == null ? null : im.GetHeldCard();
+            var e = held == null ? null : held.GetEntity();
+            if (e == null)
+            {
+                if (m_mode == Mode.Place || m_mode == Mode.Playing) { m_mode = Mode.Browse; m_placing = null; }
+                return;
+            }
+            if (m_placing == e && (m_mode == Mode.Place || m_mode == Mode.Playing)) return;
+            m_placing = e;
+            m_opposingSide = false;
+            if (e.IsMinion() || e.IsLocation())
+            {
+                m_mode = Mode.Place;
+                var zone = Zone(false);
+                m_slot = zone == null ? 1 : zone.GetCards().Count + 1;
+                Log.Info("match: holding " + e.GetName() + ", where?");
+                SayPlace();
+            }
+            else
+            {
+                m_mode = Mode.Playing;
+                Log.Info("match: holding " + e.GetName());
+                if (!gs.EntityHasTargets(e)) Say(Speech.S(K.GAMEPLAY_QUERY_PLAY_CARD));
+            }
+        }
+
+        bool m_mouseOwned;        // Shift+F / Ctrl+F move the mouse themselves
+
+        // Every frame, as Hearthstone Access: a held card's mouse is the placement's (or over the board);
+        // otherwise the mouse rests on the card looked at (in a list, the list's card); with nothing looked
+        // at it is hidden. While a target is chosen it is never hidden or put on a hand card the option
+        // cannot target: off the board the game would cancel the targeting.
+        void UpdateMouse(GameState gs)
+        {
+            if (!VirtualMouse.Pointing || VirtualMouse.Clicking || m_mouseOwned) return;
+            try
+            {
+                var im = InputManager.Get();
+                var held = im == null ? null : im.GetHeldCard();
+                bool targeting = gs.IsInTargetMode();
+                if (held != null && !targeting)
+                {
+                    if (m_mode == Mode.Place) PlaceMouse();
+                    else BoardMouse();
+                    return;
+                }
+                if ((m_mode == Mode.Mulligan || m_mode == Mode.Choices) && m_at >= 0 && m_at < m_list.Count)
+                {
+                    if (m_mode == Mode.Mulligan && !m_mulliganListening) { VirtualMouse.Hide(); return; }
+                    PointCard(m_list[m_at]);
+                    return;
+                }
+                var card = Combat.FocusedCard;
+                if (card != null && CanPoint(card, gs)) { PointCard(card); return; }
+                if (!targeting && held == null) VirtualMouse.Hide();
+            }
+            catch (Exception ex) { Log.Error(ex); }
+        }
+
+        static bool CanPoint(Card card, GameState gs)
+        {
+            var e = card.GetEntity();
+            if (e == null) return false;
+            if (gs.IsInTargetMode() && e.GetZone() == TAG_ZONE.HAND && !gs.DoesSelectedOptionHaveHandTarget()) return false;
+            return true;
+        }
+
+        // On the card: a hand card on its mana gem (attack, then health gem if it has none), and only when it
+        // is not already under the mouse (hovering raises it, re-aiming would make it flicker); else the card
+        static void PointCard(Card card)
+        {
+            if (card == null || card.gameObject == null) return;
+            var e = card.GetEntity();
+            if (e != null && e.GetZone() == TAG_ZONE.HAND && card.GetZone() is ZoneHand)
+            {
+                if (card.IsMousedOver()) return;
+                var actor = card.GetActor();
+                var gem = actor == null ? null : (actor.m_manaObject ?? actor.m_attackObject ?? actor.m_healthObject);
+                VirtualMouse.PointAt(gem != null ? gem : card.gameObject);
+                return;
+            }
+            VirtualMouse.PointAt(card.gameObject);
+        }
+
+        // a held card that is not placed: over the friendly side of the board once the mouse is below the
+        // friendly hero (on the first frame it is still on the card in the hand), as Hearthstone Access did
+        void BoardMouse()
+        {
+            var hero = GS.GetFriendlySidePlayer() == null ? null : GS.GetFriendlySidePlayer().GetHeroCard();
+            var cam = Camera.main;
+            var zone = Zone(false);
+            if (hero == null || cam == null || zone == null) return;
+            if (VirtualMouse.Position.y >= cam.WorldToScreenPoint(hero.transform.position).y) return;
+            var col = zone.GetComponent<Collider>();
+            VirtualMouse.PointAtWorld(col != null ? col.bounds.center : zone.transform.position);
+        }
+
+        // the held minion over the chosen place (Hearthstone Access's points): an empty side its middle; the
+        // right end the zone's right edge, the left end its left edge; between two minions halfway between
+        // them. The game turns that into the slot (InputManager.PlayZoneSlotMousedOver).
+        void PlaceMouse()
+        {
+            var zone = Zone(m_opposingSide);
+            if (zone == null) return;
+            var cards = zone.GetCards().FindAll(c => c != null && !c.IsBeingDragged);
+            var col = zone.GetComponent<Collider>();
+            var center = col != null ? col.bounds.center : zone.transform.position;
+            var extent = col != null ? col.bounds.extents.x : 0f;
+            int last = cards.Count + 1;
+            Vector3 world = center;
+            if (cards.Count == 0) world = center;
+            else if (m_slot >= last) world.x = center.x + extent;
+            else if (m_slot <= 1) world.x = center.x - extent;
+            else world = (cards[m_slot - 2].transform.position + cards[m_slot - 1].transform.position) / 2f;
+            VirtualMouse.PointAtWorld(world);
         }
 
         void GameOver()
@@ -197,6 +329,7 @@ namespace HSAEnhanced
             if (!Input.anyKeyDown) return false;
             var gs = GS;
             if (gs == null) return false;
+            VirtualMouse.TakeOver();
             if (Bind.SEE_HISTORY.Pressed) { HistoryLog.Open(); return true; }
             // I: the keywords of the card looked at (a choice or mulligan card in those lists)
             if (Bind.READ_TOOLTIP.Pressed && m_mode != Mode.Assemble)
@@ -220,6 +353,7 @@ namespace HSAEnhanced
             if (Core.Key.Of(KeyCode.Z).Pressed) { BoardObjects.Open(); return true; }
             if (m_mode == Mode.Choices && ChoiceKeys()) return true;
             if (m_mode == Mode.Place) return PlaceKeys();
+            if (m_mode == Mode.Playing && !gs.IsInTargetMode()) return PlayKeys();
 
             // the end-turn question: Enter or E ends the turn, any other key cancels it (and does nothing else)
             if (m_confirmEndTurn)
@@ -244,8 +378,14 @@ namespace HSAEnhanced
 
             if (target || gs.IsInSubOptionMode())
             {
-                if (Keys.Enter.Pressed) { Combat.ConfirmTarget(this, true); return true; }
-                if (Keys.Back.Pressed) { Cancel(); return true; }
+                // a click on the target looked at (the mouse is on it); nothing looked at: silent
+                if (Keys.Enter.Pressed)
+                {
+                    var on = Combat.FocusedCard;
+                    if (on != null) { Log.Info("match: target " + on.GetEntity().GetName()); PointCard(on); VirtualMouse.ClickHere(0); }
+                    return true;
+                }
+                if (Keys.Back.Pressed) { RightClick(); return true; }
                 return false;
             }
             if (Keys.Back.Pressed && gs.IsInChoiceMode()) return true;      // a choice cannot be backed out of
@@ -474,107 +614,33 @@ namespace HSAEnhanced
         #endregion
 
         #region Acting on a card
-        // what the game allows for the card now; why not, in the game's words, when nothing
+        // Enter in main option mode, as Hearthstone Access: a left click on the card looked at (the mouse is
+        // on it). Not checked first: the game does what the click does there, or says why not (its play
+        // error, spoken by our hook). If the game's mouse-over is not this card, "Try again", the card is
+        // made the moused-over one and the click goes all the same.
         void Act(Card card)
         {
-            var gs = GS;
             var e = card.GetEntity();
             if (e == null) return;
             if (MercBattle.OnEnter(card)) return;
-            if (!gs.IsValidOption(e))
+            var im = InputManager.Get();
+            if (im == null) return;
+            PointCard(card);
+            if (im.GetMousedOverCard() != card && !card.IsMousedOver())
             {
-                // as a click does: the game's error (the hero says it, the message is spoken by our hook)
-                var type = PlayErrors.ErrorType.NONE;
-                try { type = gs.GetErrorType(e); } catch { }
-                if (type != PlayErrors.ErrorType.NONE)
-                {
-                    try { PlayErrors.DisplayPlayError(type, gs.GetErrorParam(e), e); return; }
-                    catch (Exception ex) { Log.Error(ex); }
-                }
-                Say(WhyNot(e) ?? Str.Join(Str.Clean(e.GetName()), Str.Unavailable));
-                return;
+                Say(Speech.S(K.GAMEPLAY_TRY_AGAIN));
+                try { im.SetMousedOverCard(card); } catch (Exception ex) { Log.Error(ex); }
             }
-            // from hand, a minion or location goes somewhere on the board: picked up as the game does when it
-            // is grabbed (its sound, held over the board, the minions making room where it would go); where
-            // is asked first
-            if (e.GetZone() == TAG_ZONE.HAND && (e.IsMinion() || e.IsLocation()))
-            {
-                m_placing = e;
-                m_opposingSide = false;
-                m_slot = Zone(false) == null ? 1 : Zone(false).GetCards().Count + 1;
-                m_mode = Mode.Place;
-                m_grabbed = Grab(card);
-                if (!m_grabbed) PickUpSound(card);
-                SayPlace();
-                return;
-            }
-            // the sounds a click makes: picking a card up from the hand, an attacker getting ready
-            try
-            {
-                if (e.GetZone() == TAG_ZONE.HAND) PickUpSound(card);
-                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter() && !e.IsInteractableObject())
-                    AttackCry(card);
-            }
-            catch (Exception ex) { Log.Error(ex); }
-            Respond(e, GAME_TAG.TAG_NOT_SET);
+            Log.Info("match: click " + e.GetName());
+            VirtualMouse.ClickHere(0);
         }
 
-        static void PickUpSound(Card card)
+        // Backspace: a right click (the game's cancel: a target, a Choose One, a held card back to the hand),
+        // then the mouse out of the way
+        void RightClick()
         {
-            try { SoundManager.Get().LoadAndPlay((AssetReference)"FX_MinionSummon01_DrawFromHand_01.prefab:c8adc026a7f5d0a4cb0706627a980c58", card.gameObject); }
-            catch (Exception ex) { Log.Error(ex); }
-        }
-
-        bool m_grabbed;           // the card being placed is held by the game (InputManager.GrabCard)
-        float m_slotNudge;        // a correction to where the mouse points for the slot (see AlignSlot)
-
-        // the game's own pick-up of a card (as a mouse press on it does)
-        static bool Grab(Card card)
-        {
-            try
-            {
-                var im = InputManager.Get();
-                if (im == null || card == null || im.GetHeldCard() != null) return false;
-                Ref.Call(im, "GrabCard", card.gameObject);
-                bool held = im.GetHeldCard() == card;
-                Log.Info("match: " + (held ? "picked up " : "could not pick up ") + card.GetEntity().GetName());
-                return held;
-            }
-            catch (Exception ex) { Log.Error(ex); return false; }
-        }
-
-        // the held card over the chosen slot: the game makes room there, shows a Magnetic link, and its drop
-        // places the card there (InputManager.PlayZoneSlotMousedOver: the slot under the mouse)
-        void PointSlot()
-        {
-            var zone = Zone(m_opposingSide);
-            if (zone == null) return;
-            int used = 0;
-            foreach (var c in zone.GetCards()) if (c != null && !c.IsBeingDragged) used++;
-            float width = zone.GetSlotWidth();
-            float left = zone.transform.position.x - (used + 1) * width / 2f;
-            var world = zone.transform.position;
-            world.x = left + (m_slot - 0.5f + m_slotNudge) * width;
-            VirtualMouse.PointAtWorld(world);
-        }
-
-        // the game reads the slot from where the mouse meets the board, a little off the zone's own height:
-        // nudged until the game's slot is the one chosen
-        IEnumerator AlignSlot(int want, bool opposing)
-        {
-            for (int i = 0; i < 16; i++)
-            {
-                yield return null;
-                if (m_mode != Mode.Place || !m_grabbed || m_slot != want || m_opposingSide != opposing) yield break;
-                var zone = Zone(opposing);
-                if (zone == null) yield break;
-                int got = zone.GetSlotMousedOver();
-                if (got == want) yield break;
-                if (got < 1) continue;
-                m_slotNudge += want > got ? 0.2f : -0.2f;
-                PointSlot();
-            }
-            Log.Info("match: the slot under the mouse is not " + want);
+            Log.Info("match: cancel");
+            VirtualMouse.ClickHere(1, true);
         }
 
         void Respond(Entity e, GAME_TAG keyword)
@@ -582,68 +648,8 @@ namespace HSAEnhanced
             Log.Info("match: " + e.GetName() + (keyword == GAME_TAG.TAG_NOT_SET ? "" : " (" + keyword + ")"));
             Combat.WhenReady(this, e, () =>
             {
-                if (!InputManager.Get().DoNetworkResponse(e, true, keyword)) { Log.Info("match: the game refused " + e.GetName()); return; }
-                if (e.GetZone() == TAG_ZONE.PLAY && e.IsCardButton()) ButtonClicked(e);
-                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter()) AttackerClicked(e);
+                if (!InputManager.Get().DoNetworkResponse(e, true, keyword)) Log.Info("match: the game refused " + e.GetName());
             });
-        }
-
-        // What the game's own click on an attacker does once it is accepted (HandleClickOnCardInBattlefield):
-        // the attack arrow from it, the enemy Taunts shown, its attack spell started (the attack sound came
-        // with the key press already)
-        static void AttackerClicked(Entity e)
-        {
-            try
-            {
-                var im = InputManager.Get();
-                var card = e.GetCard();
-                var gs = GS;
-                if (im == null || card == null || gs == null || !gs.IsInTargetMode()) return;
-                var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
-                if (reticle != null) reticle.CreateFriendlyTargetArrow(e, false, true, null, false, true);
-                bool real = !e.IsInteractableObject();
-                if (!e.HasTag(GAME_TAG.IGNORE_TAUNT) && real) gs.ShowEnemyTauntCharacters();
-                if (card.IsAttacking()) return;
-                var spell = card.GetActorAttackSpellForInput();
-                if (spell != null)
-                {
-                    if (e.GetRealTimeIsImmuneWhileAttacking()) card.GetActor().ActivateSpellBirthState(SpellType.IMMUNE);
-                    spell.ActivateState(SpellStateType.BIRTH);
-                }
-            }
-            catch (Exception ex) { Log.Error(ex); }
-        }
-
-        // What the game's own click on the hero power (or a game-mode button) does once it is accepted
-        // (InputManager.HandleClickOnCardInBattlefield): its animation and sound at once, shown as used and
-        // the mana spent; with a target to choose, the target arrow first. Without this the power was only
-        // sent to the server and its animation came late, or only after the target.
-        static void ButtonClicked(Entity e)
-        {
-            try
-            {
-                var im = InputManager.Get();
-                var card = e.GetCard();
-                var gs = GS;
-                if (im == null || card == null || gs == null) return;
-                bool exhaustable = e.IsHeroPower() || (e.IsGameModeButton() && e.HasTag(GAME_TAG.GAME_MODE_BUTTON_IS_EXHAUSTABLE));
-                if (gs.IsInTargetMode())
-                {
-                    var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
-                    if (reticle != null) reticle.CreateFriendlyTargetArrow(e, false, true, null, false, true);
-                    if (gs.CanTargetCardsInHand()) Ref.Call(im, "StartBattleCryEffect", e);
-                    Ref.Set(im, "m_targettingHeroPower", true);
-                    Ref.Call(im, "ActivatePlaySpell", card);
-                    return;
-                }
-                if (!e.HasSubCards()) Ref.Call(im, "ActivatePlaySpell", card);
-                if (exhaustable)
-                {
-                    if (!e.HasTag(GAME_TAG.HEROPOWER_UNLIMITED_USES)) e.SetTagAndHandleChange(GAME_TAG.EXHAUSTED, 1);
-                    Ref.Call(im, "PredictSpentMana", e);
-                }
-            }
-            catch (Exception ex) { Log.Error(ex); }
         }
 
         static readonly MethodInfo ErrorDescription = typeof(PlayErrors).GetMethod("GetErrorDescription", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
@@ -690,8 +696,8 @@ namespace HSAEnhanced
             else if (Keys.Number().HasValue) { m_slot = Math.Min(last, Keys.Number().Value); SayPlace(); return true; }
             else if (Bind.SWITCH_TO_OPPOSING_SUMMONING_SIDE.Pressed && m_placing.HasDisguisedAction()) { m_opposingSide = true; m_slot = Zone(true) == null ? 1 : Zone(true).GetCards().Count + 1; SayPlace(); return true; }
             else if (Bind.SWITCH_TO_FRIENDLY_SUMMONING_SIDE.Pressed && m_opposingSide) { m_opposingSide = false; m_slot = Zone(false).GetCards().Count + 1; SayPlace(); return true; }
-            else if (Keys.Enter.Pressed) { Place(); return true; }
-            else if (Keys.Back.Pressed) { CancelPlacement(); return true; }
+            else if (Keys.Enter.Pressed) { Drop(); return true; }
+            else if (Keys.Back.Pressed) { RightClick(); return true; }
             else if (Combat.CardLines(this) || Combat.StatusKeys(this)) return true;
             else return true;
             if (m_slot != was) SayPlace();
@@ -714,114 +720,29 @@ namespace HSAEnhanced
                 args = new object[] { Str.Clean(cards[m_slot - 2].GetEntity().GetName()), Str.Clean(cards[m_slot - 1].GetEntity().GetName()) };
             }
             Say(Speech.S(key, args));
-            if (m_grabbed)
-            {
-                m_slotNudge = 0;
-                PointSlot();
-                Jobs.Run(AlignSlot(m_slot, m_opposingSide));
-            }
-            else MagneticHover();
+            PlaceMouse();
         }
 
-        // A Magnetic minion held next to a Mech it can join: the game's beam and its sound, as when the card
-        // is dragged there (ZonePlay.OnMagneticHeld, which follows the slot under the mouse)
-        void MagneticHover()
+        // "Play card?": Enter plays it (a click over the board drops it), Backspace puts it back
+        bool PlayKeys()
         {
-            try
-            {
-                var e = m_placing;
-                var card = e == null ? null : e.GetCard();
-                var zone = Zone(false);
-                if (card == null || zone == null || m_opposingSide || !e.HasTag(GAME_TAG.MAGNETIC)) return;
-                Ref.Set(zone, "m_mousedOverSlot", m_slot);
-                zone.OnMagneticHeld(card);
-            }
-            catch (Exception ex) { Log.Error(ex); }
+            if (Keys.Enter.Pressed) { Drop(); return true; }
+            if (Keys.Back.Pressed) { RightClick(); return true; }
+            if (Combat.StatusKeys(this)) return true;
+            return true;
         }
 
-        // Backspace while placing: the held card back to the hand, as the game's right click does
-        void CancelPlacement()
+        // the held card let go where the mouse is (the game's DropHeldCard on the mouse-up)
+        void Drop()
         {
-            m_mode = Mode.Browse;
-            var im = InputManager.Get();
-            if (m_grabbed && im != null && im.GetHeldCard() != null) { m_grabbed = false; Cancel(); return; }
-            m_grabbed = false;
-            MagneticDropped();
-        }
-
-        // the placement given up: the beam goes, as when a dragged card is let go
-        void MagneticDropped()
-        {
-            try
-            {
-                var e = m_placing;
-                var card = e == null ? null : e.GetCard();
-                var zone = Zone(false);
-                if (card == null || zone == null || !e.HasTag(GAME_TAG.MAGNETIC)) return;
-                zone.OnMagneticDropped(card);
-            }
-            catch (Exception ex) { Log.Error(ex); }
-        }
-
-        void Place()
-        {
-            var e = m_placing;
             var zone = Zone(m_opposingSide);
-            m_mode = Mode.Browse;
-            if (e == null || zone == null) return;
-            if (!m_opposingSide && zone.GetCards().Count >= 7) { Say(Str.Word("GAMEPLAY_PlayErrors_REQ_MINION_CAP")); return; }
-            int slot = m_slot;
-            int pos = ZoneMgr.Get().PredictZonePosition(e, zone, slot);
-            Log.Info("match: place " + e.GetName() + " at " + slot + (m_opposingSide ? " (opponent's side)" : ""));
-            // held: the game's own drop (as letting go of the mouse there)
-            var im = InputManager.Get();
-            if (m_grabbed && im != null && im.GetHeldCard() == e.GetCard())
-            {
-                m_grabbed = false;
-                if (zone.GetSlotMousedOver() != slot) Log.Info("match: the game's slot is " + zone.GetSlotMousedOver() + ", not " + slot);
-                if (!im.DropHeldCard()) Log.Info("match: the game refused the drop");
-                return;
-            }
-            m_grabbed = false;
-            Combat.WhenReady(this, e, () =>
-            {
-                GS.SetSelectedOptionPosition(pos);
-                if (!InputManager.Get().DoNetworkResponse(e, true, m_opposingSide ? GAME_TAG.DISGUISED : GAME_TAG.TAG_NOT_SET)) { Log.Info("match: the game refused the placement"); return; }
-                PutOnBoard(e, zone, slot, pos);
-            });
+            if (m_mode == Mode.Place && zone != null && zone.GetSlotMousedOver() > 0 && zone.GetSlotMousedOver() != m_slot)
+                Log.Info("match: the game's slot is " + zone.GetSlotMousedOver() + ", ours " + m_slot);
+            Log.Info("match: drop " + (m_placing == null ? "?" : m_placing.GetName()));
+            if (m_mode == Mode.Place) PlaceMouse();
+            VirtualMouse.ClickHere(0);
         }
-        // What the game's own drop does once the play is accepted (InputManager.DropHeldMinionLikeCard): the
-        // card goes onto the board at once, with its landing animation and sound, the mana is shown spent,
-        // and a Battlecry that needs a target gets its arrow, the minion waiting on the board for it (Backspace
-        // returns it to the hand, as the game's cancel does). Without this the minion stayed in the hand until
-        // the target was chosen and only then appeared.
-        static void PutOnBoard(Entity e, Zone zone, int slot, int pos)
-        {
-            try
-            {
-                var im = InputManager.Get();
-                var card = e == null ? null : e.GetCard();
-                if (im == null || card == null || !(card.GetZone() is ZoneHand)) return;
-                var hand = Ref.Get<ZoneHand>(im, "m_myHandZone");
-                if (hand != null) hand.OnCardWithReplacementsPlayed(card);
-                Ref.Set(im, "m_lastZoneChangeList", ZoneMgr.Get().AddPredictedLocalZoneChange(card, zone, slot, pos));
-                Ref.Call(im, "PredictSpentMana", e);
-                var play = zone as ZonePlay;
-                if (play != null) play.OnMagneticPlay(card, pos);
-                // joining a Mech: the beam between them (with its sound), as after the game's hover
-                var magnetic = card.GetMagneticPlayData();
-                if (magnetic != null && magnetic.m_beamSpell != null) SpellUtils.ActivateBirthIfNecessary(magnetic.m_beamSpell);
-                var gs = GS;
-                if ((e.IsMinion() || e.IsLocation()) && gs != null && gs.EntityHasTargets(e))
-                {
-                    var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
-                    if (reticle != null) reticle.CreateFriendlyTargetArrow(e, true, true);
-                    Ref.Set(im, "m_battlecrySourceCard", card);
-                    if (gs.CanTargetCardsInHand()) Ref.Call(im, "StartBattleCryEffect", e);
-                }
-            }
-            catch (Exception ex) { Log.Error(ex); }
-        }
+
         #endregion
 
         #region Choices (Discover, Choose One)
@@ -863,12 +784,12 @@ namespace HSAEnhanced
                     var button = hud == null ? null : Ref.Get<UIBButton>(hud, e.GetCardId() == RewindUIManager.REWIND_CHOICE_CARDID ? "m_rewindButton" : "m_keepButton");
                     if (button != null && button.gameObject.activeInHierarchy) { Core.Click.Peg(button); return true; }
                 }
-                if (GS.IsInSubOptionMode()) InputManager.Get().HandleClickOnSubOption(e);
-                // the game's own click on a choice card (its sound, a trinket's choice, the error when refused)
-                else if (!Ref.Call(InputManager.Get(), "HandleClickOnChoice", e)) InputManager.Get().DoNetworkResponse(e);
+                // a click on the card (the game's choice or Choose One click: its sound, its errors)
+                PointCard(m_list[m_at]);
+                VirtualMouse.ClickHere(0);
                 return true;
             }
-            if (Keys.Back.Pressed && GS.IsInSubOptionMode()) { Cancel(); return true; }
+            if (Keys.Back.Pressed && GS.IsInSubOptionMode()) { RightClick(); return true; }
             if (Keys.Tab.Pressed && !GS.IsInSubOptionMode())
             {
                 var toggle = ChoiceCardMgr.Get().GetToggleButton();
@@ -928,8 +849,6 @@ namespace HSAEnhanced
         {
             m_line = 0;
             if (m_at < 0 || m_at >= m_list.Count) return;
-            // the game's hover on the card looked at (its keyword help, as under the mouse)
-            if (!GS.IsInTargetMode() && m_list[m_at] != null) VirtualMouse.PointAt(m_list[m_at].gameObject);
             var lines = CombatCards.Lines(m_list[m_at]);
             var first = lines.Count > 0 ? lines[0] : Str.Clean(m_list[m_at].GetEntity().GetName());
             var extra = m_mode == Mode.Mulligan ? Marked(m_at) : null;
@@ -966,8 +885,9 @@ namespace HSAEnhanced
             if (m_list.Count == 0) return false;
             if (Bind.MULLIGAN_MARK_CARD.Pressed)
             {
-                var card = m_list[m_at];
-                MulliganManager.Get().ToggleHoldState(card);
+                // a click on the card: the game marks it (or not)
+                PointCard(m_list[m_at]);
+                VirtualMouse.ClickHere(0);
                 int i = m_at;
                 Jobs.Run(SayMarkLater(i));
                 return true;
@@ -975,7 +895,7 @@ namespace HSAEnhanced
             if (Keys.Enter.Pressed)
             {
                 var button = Ref.Get(MulliganManager.Get(), "mulliganButton") as NormalButton;
-                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); GameStart.Confirmed = true; Core.Click.Peg(button); m_mode = Mode.Browse; m_list.Clear(); }
+                if (button != null && button.IsEnabled()) { Log.Info("match: mulligan confirmed"); GameStart.Confirmed = true; Core.Click.Peg(button); m_mulliganListening = false; VirtualMouse.Hide(); m_mode = Mode.Browse; m_list.Clear(); }
                 return true;
             }
             if (Keys.Tab.Pressed) { m_at = (m_at + 1) % m_list.Count; ReadListItem(); return true; }
@@ -985,9 +905,10 @@ namespace HSAEnhanced
             return true;
         }
 
+        // once the click is through (a few frames)
         IEnumerator SayMarkLater(int i)
         {
-            yield return null;
+            for (int f = 0; f < 6; f++) yield return null;
             Say(Marked(i));
         }
         #endregion
@@ -1055,14 +976,6 @@ namespace HSAEnhanced
 
         static bool CanBeTargetedByOpponents(Entity e) { return !e.HasTag(GAME_TAG.CANT_BE_TARGETED_BY_OPPONENTS) && !e.IsStealthed(); }
 
-        // the attacker's cry, as picking it up with the mouse plays it (its sounds loaded first)
-        static void AttackCry(Card card)
-        {
-            if (card == null) return;
-            try { card.GetAttackSoundSpells(true); card.ActivateCharacterAttackEffects(); }
-            catch (Exception ex) { Log.Error(ex); }
-        }
-
         void MinionToFace(Card card)
         {
             if (card == null) return;
@@ -1091,12 +1004,13 @@ namespace HSAEnhanced
         IEnumerator Attack(List<Entity> only)
         {
             m_attackingFace = true;
+            m_mouseOwned = true;
             try
             {
                 var e = AttackEach(only);
                 while (e.MoveNext()) yield return e.Current;
             }
-            finally { m_attackingFace = false; }
+            finally { m_attackingFace = false; m_mouseOwned = false; }
         }
 
         IEnumerator AttackEach(List<Entity> only)
@@ -1114,10 +1028,16 @@ namespace HSAEnhanced
                 var attacker = list[0];
                 var hero = EnemyHero;
                 Log.Info("match: " + attacker.GetName() + " attacks the hero");
-                AttackCry(attacker.GetCard());
-                if (!InputManager.Get().DoNetworkResponse(attacker)) yield break;
-                yield return null;
-                if (GS.IsInTargetMode()) InputManager.Get().DoNetworkResponse(hero);
+                // as Hearthstone Access: a click on the minion, a moment, a click on the enemy hero
+                PointCard(attacker.GetCard());
+                VirtualMouse.ClickHere(0);
+                float wait = Time.unscaledTime + 1.5f;
+                while (Time.unscaledTime < wait && (VirtualMouse.Clicking || !GS.IsInTargetMode())) yield return null;
+                if (!GS.IsInTargetMode()) yield break;
+                yield return new WaitForSecondsRealtime(0.1f);
+                PointCard(hero == null ? null : hero.GetCard());
+                VirtualMouse.ClickHere(0);
+                while (VirtualMouse.Clicking) yield return null;
                 if (only != null) only.Remove(attacker);
                 yield return new WaitForSecondsRealtime(0.5f);
             }
