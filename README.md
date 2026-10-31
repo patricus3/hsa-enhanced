@@ -52,6 +52,7 @@ No Blizzard code is kept in this repository; the mod is compiled on the player's
 
 - `Resources/enhanced`: the mod (its core: speech, keys, focus, menus, text input; and every screen), compiled against the game's own class library.
 - `Resources/release-version.txt`: the version packaged in a release; keep it synchronized with the release tag so installed updaters can compare versions.
+- `release/make-packages.py`: builds the three packages in `release/` (`python3 release/make-packages.py`, on Windows `py release\make-packages.py`). Use it instead of zipping by hand: a zip made on Windows (Explorer, Compress-Archive) carries no Unix permissions, and macOS then refuses to open `Install Hearthstone access.command` until the player types `chmod +x`.
 - `Resources/tools/port`: a Mono.Cecil tool that hooks the mod into the game's `Assembly-CSharp.dll` (the game's input update and its error messages) and checks every reference against the game's own assemblies.
 - `Resources/strings`: Hearthstone Access's text files (`ACCESSIBILITY.txt` per language), reused with its makers' agreement; texts only, no code.
 - Windows: `Resources/windows` (install, rebuild and uninstall scripts; `speech` is the Prism bridge; `prism` holds `prism.dll`).
