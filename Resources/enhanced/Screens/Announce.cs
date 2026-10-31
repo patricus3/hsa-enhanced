@@ -104,8 +104,17 @@ namespace HSAEnhanced
                 if (queue != null && queue.Contains(t)) continue;
                 ended.Add(t);
             }
+            // a card still flying into a deck (shuffled in, sent back): what ended is said once it lands, as
+            // the player sees it (at most 3 s later)
+            if (ended.Count > 0 && CardsFlyingToDeck(gs))
+            {
+                if (s_flyingSince < 0) s_flyingSince = Time.unscaledTime;
+                if (Time.unscaledTime - s_flyingSince < 3f) ended.Clear();
+            }
+            else if (ended.Count > 0) s_flyingSince = -1;
             if (ended.Count > 0)
             {
+                s_flyingSince = -1;
                 foreach (var t in ended) { s_pending.Remove(t); s_ended.Add(t); }
                 ended.RemoveAll(t => t.GetTaskList() == null || t.GetTaskList().Count == 0);
                 ended.Sort((a, b) => a.GetId().CompareTo(b.GetId()));
@@ -127,6 +136,24 @@ namespace HSAEnhanced
             else if (s_waitingBanner && !mulligan && Time.unscaledTime - s_waitingSince > 10f && CanPlay(gs)) YourTurn(gs);
             // the held lines: once their play has been said, or after a few seconds whatever happened
             if (s_holdFor != null && (s_described.Contains(s_holdFor) || Time.unscaledTime - s_holdSince > 6f)) ReleaseHeld();
+        }
+
+        static float s_flyingSince = -1;
+
+        // a card the game has put in a deck while its card is still on the way there
+        static bool CardsFlyingToDeck(GameState gs)
+        {
+            try
+            {
+                foreach (var e in gs.GetEntityMap().Values)
+                {
+                    if (e == null || e.GetZone() != TAG_ZONE.DECK) continue;
+                    var card = e.GetCard();
+                    if (card != null && card.IsTransitioningZones() && !(card.GetZone() is ZoneDeck)) return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         // the play a task list belongs to (itself, the block it continues, or the blocks it is nested in)
@@ -730,8 +757,13 @@ namespace HSAEnhanced
             if (names.Count == 0) return null;
             // a hidden card is named "Card": some languages' texts already say it ("Karta {0} została dodana")
             var hidden = CombatCards.HiddenName();
-            var text = names.Count == 1 ? A(singular, names[0]) : A(plural, Names(names));
+            var list = names.Count == 1 ? names[0] : Names(names);
+            var text = names.Count == 1 ? A(singular, list) : A(plural, list);
             if (!string.IsNullOrEmpty(hidden)) text = text.Replace(hidden + " " + hidden, hidden);
+            // the same for several ("Karty {0} zostały dodane" with "2 Karty"): the text's own first word goes
+            var words = list.Split(' ');
+            var first = text.Split(' ')[0];
+            if (words.Length > 1 && first == words[words.Length - 1] && text.StartsWith(first + " " + list)) text = text.Substring(first.Length + 1);
             return text;
         }
 

@@ -30,8 +30,7 @@ namespace HSAEnhanced
                 else Normal(card, e, lines);
             }
             catch (Exception ex) { Log.Error(ex); if (lines.Count == 0) lines.Add(Str.Clean(e.GetName())); }
-            // ours: the flavor text last (the game shows it when a card is inspected in the collection)
-            try { var def = e.GetEntityDef(); if (def != null && lines.Count > 0) lines.Add(Str.Clean(def.GetFlavorText())); } catch { }
+            // no flavor text in a match: the game shows it only for a card inspected in the collection
             lines.RemoveAll(l => string.IsNullOrEmpty(l));
             return lines;
         }

@@ -231,7 +231,7 @@ namespace HSAEnhanced
 
             // before the mulligan is over (the versus intro, the starting hand, waiting for the opponent) the
             // board is not in play yet: the zone keys (V, F, ...) and moving through cards wait for it
-            if ((!gs.IsPastBeginPhase() || gs.IsMulliganManagerActive()) && (ZoneKey() || MoveKey() || LineKey())) return true;
+            if ((!gs.IsPastBeginPhase() || gs.IsMulliganManagerActive()) && (ZoneKey() || MoveKey() || LineKey() || StatusKey())) return true;
 
             bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET;
             // the shared combat handlers were written as Hearthstone Access hooks ("true": skip HSA's
@@ -262,6 +262,8 @@ namespace HSAEnhanced
 
             if (!gs.IsInMainOptionMode()) return false;
             if (Keys.Enter.Pressed) { if (card != null) Act(card); return true; }
+            // ending the turn: only your own (in the opponent's the game takes emotes and the like, not this)
+            if ((Bind.FORCE_END_TURN.Pressed || Bind.END_TURN.Pressed) && !gs.IsFriendlySidePlayerTurn()) return true;
             if (Bind.FORCE_END_TURN.Pressed) { EndTurn(); return true; }
             if (Bind.END_TURN.Pressed) { AskEndTurn(); return true; }
             if (Bind.SEND_MINION_TO_FACE.Pressed) { MinionToFace(card); return true; }
@@ -275,6 +277,13 @@ namespace HSAEnhanced
             return Bind.SEE_PLAYER_HAND.Pressed || Bind.SEE_PLAYER_SECRETS.Pressed || Bind.SEE_OPPONENT_SECRETS.Pressed || Bind.SEE_PLAYER_MINIONS.Pressed
                 || Bind.SEE_OPPONENT_MINIONS.Pressed || Bind.SEE_OPPONENT_HERO.Pressed || Bind.SEE_PLAYER_HERO.Pressed || Bind.SEE_PLAYER_HERO_POWER.Pressed
                 || Bind.SEE_OPPONENT_HERO_POWER.Pressed || Bind.SEE_PLAYER_WEAPON.Pressed || Bind.SEE_OPPONENT_WEAPON.Pressed;
+        }
+
+        // A / Shift+A (mana), D / Shift+D (decks), Shift+C (the opponent's hand)
+        static bool StatusKey()
+        {
+            return Bind.SEE_OPPONENT_MANA.Pressed || Bind.SEE_PLAYER_MANA.Pressed || Bind.SEE_OPPONENT_DECK.Pressed || Bind.SEE_PLAYER_DECK.Pressed
+                || Bind.SEE_OPPONENT_HAND.Pressed;
         }
 
         static bool MoveKey()
@@ -594,7 +603,7 @@ namespace HSAEnhanced
             else if (Bind.SWITCH_TO_OPPOSING_SUMMONING_SIDE.Pressed && m_placing.HasDisguisedAction()) { m_opposingSide = true; m_slot = Zone(true) == null ? 1 : Zone(true).GetCards().Count + 1; SayPlace(); return true; }
             else if (Bind.SWITCH_TO_FRIENDLY_SUMMONING_SIDE.Pressed && m_opposingSide) { m_opposingSide = false; m_slot = Zone(false).GetCards().Count + 1; SayPlace(); return true; }
             else if (Keys.Enter.Pressed) { Place(); return true; }
-            else if (Keys.Back.Pressed) { m_mode = Mode.Browse; Say(Str.Clean(m_placing.GetName())); return true; }
+            else if (Keys.Back.Pressed) { MagneticDropped(); m_mode = Mode.Browse; return true; }
             else if (Combat.CardLines(this) || Combat.StatusKeys(this)) return true;
             else return true;
             if (m_slot != was) SayPlace();
@@ -617,6 +626,37 @@ namespace HSAEnhanced
                 args = new object[] { Str.Clean(cards[m_slot - 2].GetEntity().GetName()), Str.Clean(cards[m_slot - 1].GetEntity().GetName()) };
             }
             Say(Speech.S(key, args));
+            MagneticHover();
+        }
+
+        // A Magnetic minion held next to a Mech it can join: the game's beam and its sound, as when the card
+        // is dragged there (ZonePlay.OnMagneticHeld, which follows the slot under the mouse)
+        void MagneticHover()
+        {
+            try
+            {
+                var e = m_placing;
+                var card = e == null ? null : e.GetCard();
+                var zone = Zone(false);
+                if (card == null || zone == null || m_opposingSide || !e.HasTag(GAME_TAG.MAGNETIC)) return;
+                Ref.Set(zone, "m_mousedOverSlot", m_slot);
+                zone.OnMagneticHeld(card);
+            }
+            catch (Exception ex) { Log.Error(ex); }
+        }
+
+        // the placement given up: the beam goes, as when a dragged card is let go
+        void MagneticDropped()
+        {
+            try
+            {
+                var e = m_placing;
+                var card = e == null ? null : e.GetCard();
+                var zone = Zone(false);
+                if (card == null || zone == null || !e.HasTag(GAME_TAG.MAGNETIC)) return;
+                zone.OnMagneticDropped(card);
+            }
+            catch (Exception ex) { Log.Error(ex); }
         }
 
         void Place()
@@ -654,6 +694,9 @@ namespace HSAEnhanced
                 Ref.Call(im, "PredictSpentMana", e);
                 var play = zone as ZonePlay;
                 if (play != null) play.OnMagneticPlay(card, pos);
+                // joining a Mech: the beam between them (with its sound), as after the game's hover
+                var magnetic = card.GetMagneticPlayData();
+                if (magnetic != null && magnetic.m_beamSpell != null) SpellUtils.ActivateBirthIfNecessary(magnetic.m_beamSpell);
                 var gs = GS;
                 if ((e.IsMinion() || e.IsLocation()) && gs != null && gs.EntityHasTargets(e))
                 {
