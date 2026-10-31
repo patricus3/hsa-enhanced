@@ -69,7 +69,7 @@ namespace HSAEnhanced
         int m_line;
         bool m_confirmEndTurn;
         GameState.ResponseMode? m_lastResponse;
-        bool m_mulliganSeen, m_gameOverSaid, m_choicesShown;
+        bool m_mulliganSeen, m_gameOverSaid, m_choicesShown, m_loggedChoiceMode, m_loggedShown;
         object m_choiceKey;
         AssembleUIManager m_assembleManager;
         AssembleChoiceParams[] m_assembleChoiceData;
@@ -136,6 +136,13 @@ namespace HSAEnhanced
             // target is chosen, but the cards are gone and the target is what is asked
             var targeting = gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET || gs.GetResponseMode() == GameState.ResponseMode.OPTION_REVERSE_TARGET;
             if (shown && targeting && ChoiceCardMgr.Get().HasSubOption()) shown = false;
+            // for bug reports: every choice the game asks for, and whether its cards are on show
+            bool choiceMode = gs.IsInChoiceMode();
+            if (choiceMode != m_loggedChoiceMode || shown != m_loggedShown)
+            {
+                m_loggedChoiceMode = choiceMode; m_loggedShown = shown;
+                Log.Info("match: choice mode " + choiceMode + ", cards " + (cards == null ? 0 : cards.Count) + ", shown " + shown);
+            }
             if (shown && (!m_choicesShown || !Equals(m_choiceKey, cards[0])))
             {
                 m_choicesShown = true;
