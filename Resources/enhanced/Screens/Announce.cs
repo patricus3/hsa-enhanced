@@ -33,6 +33,12 @@ namespace HSAEnhanced
         static readonly List<PowerTaskList> s_pending = new List<PowerTaskList>();
         static PowerTaskList s_lastCurrent;
         static float s_waitingSince;
+        // what a play did, held until the play itself has been said ("Your opponent played Parachute Drop"
+        // before "2 Silver Hand Recruits were summoned"): an opponent's card is often known (and said) only
+        // after parts of its play have already ended
+        static PowerTaskList s_holdFor;
+        static float s_holdSince;
+        static readonly List<string> s_afterPlay = new List<string>();
         static readonly HashSet<int> s_sheathed = new HashSet<int>(), s_unsheathed = new HashSet<int>(), s_broke = new HashSet<int>();
 
         static bool Enabled
@@ -57,6 +63,7 @@ namespace HSAEnhanced
             s_lastTurn = 0;
             s_deferred.Clear(); s_held.Clear(); s_described.Clear(); s_ended.Clear(); s_pending.Clear();
             s_lastCurrent = null;
+            s_holdFor = null; s_afterPlay.Clear();
             s_sheathed.Clear(); s_unsheathed.Clear(); s_broke.Clear();
             if (gs != null)
                 try { gs.RegisterFriendlyTurnStartedListener(OnFriendlyTurnStarted); } catch (Exception e) { Log.Error(e); }
@@ -118,6 +125,29 @@ namespace HSAEnhanced
             if (s_turnStartPending && current == null && !mulligan && BannerShown(gs)) { s_turnStartPending = false; YourTurn(gs); }
             // no turn event (some missions): what was held back is not kept forever
             else if (s_waitingBanner && Time.unscaledTime - s_waitingSince > 10f && gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode()) YourTurn(gs);
+            // the held lines: once their play has been said, or after a few seconds whatever happened
+            if (s_holdFor != null && (s_described.Contains(s_holdFor) || Time.unscaledTime - s_holdSince > 6f)) ReleaseHeld();
+        }
+
+        // the play a task list belongs to (itself, the block it continues, or the blocks it is nested in)
+        // when that play has not been said yet
+        static PowerTaskList UnsaidPlay(PowerTaskList t)
+        {
+            for (var p = t; p != null; p = p.GetParent())
+            {
+                var origin = p.GetOrigin();
+                if (origin != null && origin.IsPlayBlock() && !s_described.Contains(origin)) return origin;
+            }
+            return null;
+        }
+
+        static void ReleaseHeld()
+        {
+            Log.Info("announce: held lines released (" + (s_described.Contains(s_holdFor) ? "play said" : "timeout") + ")");
+            var held = new List<string>(s_afterPlay);
+            s_afterPlay.Clear();
+            s_holdFor = null;
+            Out(held);
         }
 
         static bool Mulligan()
@@ -190,7 +220,21 @@ namespace HSAEnhanced
             if (t.IsPlayBlock() && ShowsBigCard(src, t))
             {
                 var line = PlayLine(src, true);
-                if (!string.IsNullOrEmpty(line)) { s_described.Add(t); Say(line); }
+                if (!string.IsNullOrEmpty(line))
+                {
+                    s_described.Add(t);
+                    // what the play did that ended before the card was known: right after it
+                    if (s_holdFor == t && s_afterPlay.Count > 0)
+                    {
+                        var all = new List<string> { line };
+                        all.AddRange(s_afterPlay);
+                        s_afterPlay.Clear();
+                        s_holdFor = null;
+                        Log.Info("announce: held lines said after the play");
+                        Say(Lines(all));
+                    }
+                    else Say(line);
+                }
                 return;
             }
             if (t.IsTriggerBlock() && BigTrigger(src, t))
@@ -314,10 +358,15 @@ namespace HSAEnhanced
             {
                 var src = t.GetSourceEntity(false);
                 if (t.IsOrigin()) source = src ?? source;
-                if (t.IsOrigin() && !s_described.Contains(t))
+                if (t.IsOrigin() && !s_described.Contains(t) && !(t.IsPlayBlock() && (src == null || !Known(src)) && t.GetNext() != null))
                 {
                     s_described.Add(t);
-                    if (t.IsPlayBlock() && src != null && Known(src)) lines.Add(PlayLine(src, ShowsBigCard(src, t)));
+                    if (t.IsPlayBlock() && src != null && Known(src))
+                    {
+                        lines.Add(PlayLine(src, ShowsBigCard(src, t)));
+                        // the held lines of this play: right after it
+                        if (s_holdFor == t && s_afterPlay.Count > 0) { lines.AddRange(s_afterPlay); s_afterPlay.Clear(); s_holdFor = null; }
+                    }
                     else if (t.IsBlockType(PegasusGame.HistoryBlock.Type.FATIGUE) && src != null)
                         lines.Add(A(IsFriendly(src) ? "GAMEPLAY_PLAYER_DREW_CARD_FROM_EMPTY_DECK" : "GAMEPLAY_OPPONENT_DREW_CARD_FROM_EMPTY_DECK"));
                     else if (t.IsBlockType(PegasusGame.HistoryBlock.Type.ATTACK)) lines.Add(AttackLine(t));
@@ -384,6 +433,26 @@ namespace HSAEnhanced
             s_prevStep = step;
             if (s_last == null) s_canSnapshot = true;
 
+            // parts of a play that has not been said yet (its card still unknown) ended: what they did
+            // waits for the play's own line
+            PowerTaskList hold = null;
+            foreach (var t in ended) { var p = UnsaidPlay(t); if (p != null) hold = p; }
+            // a play under way and not said yet (an opponent's card is said once the game shows it big):
+            // what ended meanwhile is part of it
+            if (hold == null)
+            {
+                var running = gs.GetPowerProcessor() == null ? null : gs.GetPowerProcessor().GetCurrentTaskList();
+                var origin = running == null ? null : running.GetOrigin();
+                if (origin != null && origin.IsPlayBlock() && !s_described.Contains(origin)) hold = origin;
+            }
+            if (hold != null && s_holdFor != hold)
+            {
+                if (s_holdFor != null) ReleaseHeld();
+                s_holdFor = hold;
+                s_holdSince = Time.unscaledTime;
+                Log.Info("announce: holding what the play did until the play is said");
+            }
+
             if (!s_canSnapshot) { Out(lines); return; }
             var now = SnapshotFull(gs);
             if (canDescribe && s_last != null) lines.Add(Diff(gs, s_last, now, source == null ? 0 : source.GetEntityId(), step, quietDamage));
@@ -401,6 +470,7 @@ namespace HSAEnhanced
         {
             var text = Lines(lines);
             if (text.Length == 0) return;
+            if (s_holdFor != null && !s_described.Contains(s_holdFor)) { s_afterPlay.Add(text); return; }
             if (s_waitingBanner) { s_deferred.Add(text); return; }
             if (Mulligan()) { s_held.Add(text); return; }
             Say(text);
@@ -647,8 +717,11 @@ namespace HSAEnhanced
         static string ZoneText(List<string> names, string singular, string plural)
         {
             if (names.Count == 0) return null;
-            if (names.Count == 1) return A(singular, names[0]);
-            return A(plural, Names(names));
+            // a hidden card is named "Card": some languages' texts already say it ("Karta {0} została dodana")
+            var hidden = CombatCards.HiddenName();
+            var text = names.Count == 1 ? A(singular, names[0]) : A(plural, Names(names));
+            if (!string.IsNullOrEmpty(hidden)) text = text.Replace(hidden + " " + hidden, hidden);
+            return text;
         }
 
         // ---- the diff -----------------------------------------------------------------------------
