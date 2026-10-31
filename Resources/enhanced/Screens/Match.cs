@@ -221,6 +221,10 @@ namespace HSAEnhanced
                 return true;
             }
 
+            // before the mulligan is over (the versus intro, the starting hand, waiting for the opponent) the
+            // board is not in play yet: the zone keys (V, F, ...) and moving through cards wait for it
+            if ((!gs.IsPastBeginPhase() || gs.IsMulliganManagerActive()) && (ZoneKey() || MoveKey() || LineKey())) return true;
+
             bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET;
             // the shared combat handlers were written as Hearthstone Access hooks ("true": skip HSA's
             // handler), so they claim every key: each gets only the keys it handles

@@ -115,7 +115,7 @@ namespace HSAEnhanced
                 foreach (var h in held) { if (s_waitingBanner) s_deferred.Add(h); else Say(h); }
             }
             // your turn: when the game shows its "Your Turn" banner (the mulligan over, the mana given)
-            if (s_turnStartPending && current == null && !mulligan && BannerShown()) { s_turnStartPending = false; YourTurn(gs); }
+            if (s_turnStartPending && current == null && !mulligan && BannerShown(gs)) { s_turnStartPending = false; YourTurn(gs); }
             // no turn event (some missions): what was held back is not kept forever
             else if (s_waitingBanner && Time.unscaledTime - s_waitingSince > 10f && gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode()) YourTurn(gs);
         }
@@ -126,12 +126,16 @@ namespace HSAEnhanced
             try { return m != null && (m.IsMulliganActive() || m.IsMulliganIntroActive()); } catch { return false; }
         }
 
-        // the game's banner for your turn has been shown (or there is none to wait for)
-        static bool BannerShown()
+        // the game's banner for your turn has been shown (or there is none to wait for). Not merely "the
+        // game is not waiting for turn events yet": right after the mulligan the turn is reported before
+        // the game listens for it and before the mana is given ("Your turn. 0 mana."); without a banner,
+        // the turn has begun once you can play
+        static bool BannerShown(GameState gs)
         {
             var t = TurnStartManager.Get();
-            if (t == null) return true;
-            try { return Ref.Get<bool>(t, "m_twoScoopsDisplayed") || t.IsTurnStartIndicatorShowing() || !t.IsListeningForTurnEvents(); } catch { return true; }
+            bool canPlay = gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode();
+            if (t == null) return canPlay;
+            try { return Ref.Get<bool>(t, "m_twoScoopsDisplayed") || t.IsTurnStartIndicatorShowing() || (!t.IsListeningForTurnEvents() && canPlay); } catch { return canPlay; }
         }
 
         static void Say(string text)
