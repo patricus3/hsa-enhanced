@@ -621,7 +621,16 @@ namespace HSAEnhanced
             if (sig != m_bookSig) { if (!entering) { m_tab = 0; m_page = 1; m_at = 0; } m_bookSig = sig; }
             title = A("GLOBAL_CARD_PLURAL");
             list = new List<Entry>();
-            if (tabs.Count == 0) { key = "book|empty:" + sig; intro = Str.Join(SetName(display), Speech.S("ACCESSIBILITY_LIST_NO_ITEMS")); return true; }
+            if (tabs.Count == 0)
+            {
+                // nothing found: what the game's book says then, and its hint (Enter follows it)
+                key = "book|empty:" + sig;
+                Action follow;
+                var said = NoResults(display, filter.FindCardsResult, out follow);
+                intro = Str.Join(SetName(display), said);
+                list.Add(new Entry { Name = said, Enter = follow ?? (() => Say(said, true)) });
+                return true;
+            }
             m_tab = Math.Max(0, Math.Min(m_tab, tabs.Count - 1));
             var tab = tabs[m_tab];
             int pages = filter.GetNumPagesForTab(tab);
@@ -653,6 +662,37 @@ namespace HSAEnhanced
                 });
             }
             return true;
+        }
+
+        // The game's "no results" text with its hint (CollectionPageDisplay.ShowNoMatchesFound), and
+        // what the hint asks for: another cost, another set, crafting mode
+        string NoResults(CollectionManagerDisplay display, CollectionManager.FindCardsResult r, out Action follow)
+        {
+            follow = null;
+            if (r == null) return Str.Word("GLUE_COLLECTION_NO_RESULTS");
+            if (r.m_resultsWithoutManaFilterExist && ManaNow(display) != null)
+            {
+                follow = () =>
+                {
+                    Log.Info("collection: no results, mana filter off");
+                    Ref.Invoke(display.m_manaTabManager, "UpdateCurrentFilterToSingleValue", -1, true);
+                    m_next = Time.unscaledTime + 0.3f;
+                };
+                return Str.Join(Str.Word("GLUE_COLLECTION_NO_RESULTS_IN_SELECTED_COST"), Str.Word("GLUE_COLLECTION_NO_RESULTS_IN_SELECTED_COST_HINT"));
+            }
+            if ((r.m_resultsWithoutSetFilterExist || r.m_resultsInWildExist) && SetTray(display) != null)
+            {
+                follow = () => { Log.Info("collection: no results, change set"); OpenSets(display, "book"); };
+                return r.m_resultsWithoutSetFilterExist
+                    ? Str.Join(Str.Word("GLUE_COLLECTION_NO_RESULTS_IN_CURRENT_SET"), Str.Word("GLUE_COLLECTION_NO_RESULTS_IN_CURRENT_SET_HINT"), A("SCREEN_COLLECTION_MANAGER_CHANGE_SET"))
+                    : Str.Join(Str.Word("GLUE_COLLECTION_NO_RESULTS_IN_STANDARD"), A("SCREEN_COLLECTION_MANAGER_CHANGE_SET"));
+            }
+            if (r.m_resultsUnownedExist && !display.InCraftingMode() && display.m_craftingModeButton != null && display.m_craftingModeButton.gameObject.activeInHierarchy)
+            {
+                follow = () => { Log.Info("collection: no results, crafting on"); Core.Click.Peg(display.m_craftingModeButton); m_next = Time.unscaledTime + 0.3f; };
+                return Str.Join(Str.Word("GLUE_COLLECTION_NO_RESULTS_BUT_CRAFTABLE"), Str.Word("GLUE_COLLECTION_NO_RESULTS_BUT_CRAFTABLE_HINT"));
+            }
+            return Str.Word("GLUE_COLLECTION_NO_RESULTS");
         }
 
         // Right on the last card: the next page (class); Left on the first: the previous page's last card
@@ -1519,6 +1559,19 @@ namespace HSAEnhanced
 
         internal override bool HandleKey()
         {
+            // Ctrl+F from the collection's menus and lists (as the game's search box, always there):
+            // the book of cards with what was typed
+            if (CtrlF.Pressed && m_view != "book")
+            {
+                var display = Collection.Display();
+                string from = m_view == "seedeck" || m_view == "deckmenu" ? "deckmenu" : m_view == "crafting" ? "crafting" : m_view == "main" || m_view == "browse" ? "main" : null;
+                if (display != null && from != null && (from != "deckmenu" || Editing))
+                {
+                    OpenBook(from);
+                    Search(display);
+                    return true;
+                }
+            }
             if (m_list != null && m_menu == null) return ListKeys();
             if (m_menu == null) return false;
             if (m_view == "deckmenu" && Keys.Back.Pressed) return true;
