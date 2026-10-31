@@ -144,8 +144,11 @@ namespace HSAEnhanced
                 m_list = new List<Card>(cards);
                 m_at = 0; m_line = 0;
                 Say(RewindUIManager.IsShowingRewindUI ? Speech.S("ACCESSIBILITY_GAMEPLAY_QUERY_REWIND") : gs.IsInSubOptionMode() ? Str.Word("GAMEPLAY_CHOOSE_ONE") : ChoiceTitle());
+                bool reroll = AddReroll();
                 ReadListItem();
+                if (reroll) SayRerollHelp();
             }
+            else if (shown && m_mode == Mode.Choices && AddReroll()) SayRerollHelp();
             else if (!shown && m_choicesShown)
             {
                 m_choicesShown = false;
@@ -618,6 +621,7 @@ namespace HSAEnhanced
             if (Keys.Enter.Pressed)
             {
                 var e = m_list[m_at].GetEntity();
+                if (RerollEntity() == e) { Reroll(); return true; }
                 Log.Info("match: chose " + e.GetName());
                 // Rewind / Keep: the game's own button (its animation goes with it)
                 if (RewindUIManager.IsShowingRewindUI)
@@ -636,14 +640,36 @@ namespace HSAEnhanced
                 var toggle = ChoiceCardMgr.Get().GetToggleButton();
                 if (toggle != null && toggle.gameObject.activeInHierarchy) { Core.Click.Peg(toggle); return true; }
             }
-            if (Bind.REROLL_CHOICE.Pressed)
-            {
-                var reroll = UnityEngine.Object.FindObjectOfType<RerollUIManager>();
-                var button = reroll == null ? null : Ref.Get(reroll, "m_rerollButton") as PegUIElement;
-                if (button != null && button.gameObject.activeInHierarchy) { Core.Click.Peg(button); return true; }
-            }
+            if (Bind.REROLL_CHOICE.Pressed && RerollEntity() != null) { Reroll(); return true; }
             return Combat.StatusKeys(this) || Keys.Back.Pressed;
         }
+
+        // The Skeleton Key's refresh: the game takes its card out of the choices and shows a button
+        static Entity RerollEntity()
+        {
+            var reroll = UnityEngine.Object.FindObjectOfType<RerollUIManager>();
+            return reroll == null || !reroll.gameObject.activeInHierarchy ? null : Ref.Get<Entity>(reroll, "m_rerollEntity");
+        }
+
+        static void Reroll()
+        {
+            var reroll = UnityEngine.Object.FindObjectOfType<RerollUIManager>();
+            var button = reroll == null ? null : Ref.Get(reroll, "m_rerollButton") as PegUIElement;
+            Log.Info("match: reroll");
+            if (button != null && button.gameObject.activeInHierarchy) Core.Click.Peg(button);
+        }
+
+        // the refresh as the last of the choices (once the game shows its button)
+        bool AddReroll()
+        {
+            var e = RerollEntity();
+            var card = e == null ? null : e.GetCard();
+            if (card == null || m_list.Contains(card)) return false;
+            m_list.Add(card);
+            return true;
+        }
+
+        void SayRerollHelp() { Say(Speech.S(K.GAMEPLAY_REROLL_CHOICE_HELP, Bind.REROLL_CHOICE.Name)); }
 
         // Left/Right, Home/End (and Tab, wrapping, when asked), and the focused card's lines
         bool ListKeys(bool tabMoves)

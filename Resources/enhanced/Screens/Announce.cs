@@ -1004,6 +1004,7 @@ namespace HSAEnhanced
             var discards = new List<string>(); var oppDiscards = new List<string>();
             var tookByMe = new List<string>(); var tookByOpp = new List<string>();
             var mySecrets = new List<string>(); var oppSecrets = new List<string>();
+            var mySummons = new List<string>(); var oppSummons = new List<string>();
             var now = new List<string>();
             var phrases = new Dictionary<int, P>();
             var group = new List<S>();
@@ -1054,6 +1055,15 @@ namespace HSAEnhanced
                     else try { oppSecrets.Add(Str.Clean(GameStrings.GetClassName(a.Class))); } catch { }
                     continue;
                 }
+                // played from the hand (its play is said already): not "moved from your hand to your battlefield"
+                if (b.Zone == TAG_ZONE.HAND && (a.Zone == TAG_ZONE.PLAY || a.Zone == TAG_ZONE.SECRET) && b.Friendly == a.Friendly) continue;
+                // onto the board from elsewhere (the deck, the graveyard...): a minion or location is summoned;
+                // anything else (a spell cast from the deck...) has its own announcement
+                if (a.Zone == TAG_ZONE.PLAY && b.Friendly == a.Friendly)
+                {
+                    if (a.Minion || a.Location) (a.Friendly ? mySummons : oppSummons).Add(name);
+                    continue;
+                }
                 var from = ZoneName(b.Zone, b.Friendly);
                 var to = ZoneName(a.Zone, a.Friendly);
                 if (from != null && to != null) phrases[a.Id] = Pair("MOVEMENT_ENTITY_MOVED_FROM_ZONE_TO_ZONE", "MOVEMENT_MULTIPLE_ENTITIES_MOVED_FROM_ZONE_TO_ZONE", from, to);
@@ -1068,6 +1078,8 @@ namespace HSAEnhanced
             if (oppDiscards.Count > 0) lines.Add(A("GAMEPLAY_OPPONENT_DISCARDED_CARDS", Names(oppDiscards)));
             if (tookByMe.Count > 0) lines.Add(A("GAMEPLAY_DIFF_MOVEMENT_CARDS_TAKEN_CONTROL_BY_PLAYER", Names(tookByMe)));
             if (tookByOpp.Count > 0) lines.Add(A("GAMEPLAY_DIFF_MOVEMENT_CARDS_TAKEN_CONTROL_BY_OPPONENT", Names(tookByOpp)));
+            lines.Add(ZoneText(mySummons, "GAMEPLAY_DIFF_MOVEMENT_CARD_ADDED_TO_PLAYER_BATTLEFIELD", "GAMEPLAY_DIFF_MOVEMENT_CARDS_ADDED_TO_PLAYER_BATTLEFIELD"));
+            lines.Add(ZoneText(oppSummons, "GAMEPLAY_DIFF_MOVEMENT_CARD_ADDED_TO_OPPONENT_BATTLEFIELD", "GAMEPLAY_DIFF_MOVEMENT_CARDS_ADDED_TO_OPPONENT_BATTLEFIELD"));
             if (mySecrets.Count > 0) lines.Add(A("GAMEPLAY_PLAYER_CAST_SECRET", Names(mySecrets)));
             if (oppSecrets.Count == 1) lines.Add(A("GAMEPLAY_OPPONENT_CAST_SECRET", oppSecrets[0]));
             else if (oppSecrets.Count > 1) lines.Add(A("GAMEPLAY_OPPONENT_CAST_N_SECRETS", oppSecrets.Count));
