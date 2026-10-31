@@ -271,23 +271,14 @@ namespace HSAEnhanced
                     items.Add(new GameButton { Target = shop, Label = label, Click = () => { page.SelectVariantByIndex(index); m_quantity = 1; } });
                 }
             }
-            // the quantity, where the game offers one
+            // the quantity, where the game offers one: an edit field (Enter, type the number, Enter)
             if (variant.ProductSupportsQuantitySelect())
             {
                 int max = Math.Max(1, page.Selection == null ? 1 : page.Selection.MaxQuantity);
                 m_quantity = Math.Max(1, Math.Min(m_quantity, max));
                 var head = Str.Word("GLUE_STORE_QUANTITY_HEADLINE");
-                foreach (var step in new[] { 1, 10, -1, -10 })
-                {
-                    int d = step;
-                    var label = Str.Join(head, (d > 0 ? "+" : "") + d, m_quantity + "/" + max);
-                    items.Add(new GameButton { Target = shop, Label = label, Click = () =>
-                    {
-                        m_quantity = Math.Max(1, Math.Min(m_quantity + d, max));
-                        page.SetVariantQuantityAndUpdateDataModel(page.GetSelectedVariant(), m_quantity);
-                        Speech.Say(m_quantity.ToString());
-                    } });
-                }
+                var label = string.IsNullOrEmpty(head) ? Speech.S("HSA_ENHANCED_SHOP_QUANTITY", m_quantity) : Str.Join(head, m_quantity.ToString());
+                items.Add(new GameButton { Target = shop, Label = label, Click = () => AskQuantity(page, max) });
             }
             // one option per price
             if (variant.Availability != ProductAvailability.ALREADY_OWNED && variant.Prices != null)
@@ -302,6 +293,26 @@ namespace HSAEnhanced
             else if (variant.Availability == ProductAvailability.ALREADY_OWNED)
                 items.Add(new GameButton { Target = shop, Label = Str.Word("GLUE_STORE_HEROES_PURCHASED"), Click = () => Speech.Say(Str.Word("GLUE_STORE_HEROES_PURCHASED")) });
             return true;
+        }
+
+        // the quantity typed in; a wrong number is said and the field opens again
+        void AskQuantity(ProductPage page, int max)
+        {
+            TextInput.Ask(Speech.S("HSA_ENHANCED_SHOP_QUANTITY_PROMPT", 1, max), text =>
+            {
+                int n;
+                if (!int.TryParse((text ?? "").Trim(), out n) || n < 1 || n > max)
+                {
+                    Speech.Say(Speech.S("HSA_ENHANCED_SHOP_QUANTITY_ERROR", 1, max), true);
+                    return;
+                }
+                if (page == null || !page || Page() != page) return;
+                m_quantity = n;
+                page.SetVariantQuantityAndUpdateDataModel(page.GetSelectedVariant(), m_quantity);
+                Log.Info("shop: quantity " + n);
+                Speech.Say(Speech.S("HSA_ENHANCED_SHOP_QUANTITY", n), true);
+                m_next = 0;
+            }, () => { if (m_menu != null) m_menu.ReadCurrent(); });
         }
 
         // not enough of a virtual currency, in the game's words

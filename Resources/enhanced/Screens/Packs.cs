@@ -91,7 +91,15 @@ namespace HSAEnhanced
             else
             {
                 var cards = HiddenCards(director);
-                if (director != null && (director.IsPlaying() || director.IsDoneButtonShown) && cards != null && cards.Count > 0) { view = "pack"; items = CardItems(cards); key = "pack|" + cards[0].GetInstanceID(); }
+                bool opening = director != null && (director.IsPlaying() || director.IsDoneButtonShown) && cards != null && cards.Count > 0;
+                // the pack's animation still plays: the cards can be turned only once it is over (the game
+                // enables their reveal then), so nothing is said until then
+                if (opening && !director.IsDoneButtonShown && !cards.Exists(c => c != null && c && c.IsRevealEnabled()))
+                {
+                    if (m_view != "opening") { m_view = "opening"; m_key = "opening"; m_items = new List<Item>(); Log.Info("packs: animation"); }
+                    return true;
+                }
+                if (opening) { view = "pack"; items = CardItems(cards); key = "pack|" + cards[0].GetInstanceID(); }
                 else if (Busy) return m_view != null;     // an opening under way: the cards come next
                 else { view = "list"; items = PackItems(); key = "list|" + items.Count; }
             }
@@ -270,15 +278,14 @@ namespace HSAEnhanced
             if (merc != null && merc.Count > 0) return new List<string>(merc);
             var def = card.GetEntityDef();
             if (def == null) return new List<string> { A("UI_REWARD_TYPE_ONE_CARD") };
-            var classLine = CombatCards.ClassLine(def);
-            var lines = new List<string> { Str.Join(Edition(Str.Clean(def.GetName()), card.GetPremium()), classLine) };
+            // the first line is the name alone (said as the card turns); the class follows with the other lines
+            var lines = new List<string> { Edition(Str.Clean(def.GetName()), card.GetPremium()) };
             var rest = CombatCards.Lines(def);
             string flavor = null;
             try { flavor = Str.Clean(def.GetFlavorText()); } catch { }
             for (int i = 1; i < rest.Count; i++)
             {
                 if (!string.IsNullOrEmpty(flavor) && rest[i] == flavor) continue;
-                if (rest[i] == classLine) continue;
                 lines.Add(rest[i]);
             }
             int runes = 0;
@@ -430,6 +437,9 @@ namespace HSAEnhanced
             }
             switch (m_view)
             {
+                case "opening":
+                    // the animation plays: keys wait for the cards (Enter must not open another pack)
+                    return Keys.Enter.Pressed || Keys.Space.Pressed || Keys.Back.Pressed;
                 case "list":
                     if (Keys.Enter.Pressed) { if (item != null && item.Pack != null) OpenOne(item.Pack); return true; }
                     if (Keys.Space.Pressed) { if (item != null && item.Pack != null) OpenSeveral(item.Pack); return true; }
@@ -479,6 +489,6 @@ namespace HSAEnhanced
             return A("GLOBAL_LOADING");
         }
 
-        internal override void Read() { if (m_view != null) Say(First(), true); }
+        internal override void Read() { if (m_view != null && m_view != "opening") Say(First(), true); }
     }
 }

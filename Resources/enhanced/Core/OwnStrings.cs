@@ -76,10 +76,39 @@ namespace HSAEnhanced.Core
             catch (System.Exception e) { Log.Error(e); }
         }
 
+        // texts only this mod uses (no table has them): English and Polish
+        static readonly Dictionary<string, string[]> Ours = new Dictionary<string, string[]>
+        {
+            { "HSA_ENHANCED_ADVENTURE_BOOK_HELP", new[] {
+                "Up and down arrows move through the list, {0} chooses. {1} and {2} turn the book's pages. {3} goes back to the chapters.",
+                "Strzałki w górę i w dół poruszają po liście, {0} wybiera. {1} i {2} przewracają strony księgi. {3} wraca do spisu rozdziałów." } },
+            { "HSA_ENHANCED_ADVENTURE_CHAPTERS", new[] { "Chapters", "Rozdziały" } },
+            { "HSA_ENHANCED_ADVENTURE_NO_MORE_PAGES", new[] { "No more pages", "Nie ma więcej stron" } },
+            { "HSA_ENHANCED_SHOP_QUANTITY", new[] { "Quantity: {0}", "Ilość: {0}" } },
+            { "HSA_ENHANCED_SHOP_QUANTITY_PROMPT", new[] {
+                "Quantity, from {0} to {1}. Type a number, Enter confirms, Escape cancels",
+                "Ilość, od {0} do {1}. Wpisz liczbę, Enter zatwierdza, Escape anuluje" } },
+            { "HSA_ENHANCED_SHOP_QUANTITY_ERROR", new[] { "Type a number from {0} to {1}", "Wpisz liczbę od {0} do {1}" } },
+        };
+
+        static string OursText(string key)
+        {
+            string[] texts;
+            if (!Ours.TryGetValue(key, out texts)) return null;
+            bool polish = false;
+            try { polish = Localization.GetLocale() == Locale.plPL; } catch { }
+            return polish ? texts[1] : texts[0];
+        }
+
         // null when we have no text for it either
         internal static string Get(string key, params object[] args)
         {
-            string text;
+            string text = OursText(key);
+            if (text != null)
+            {
+                if (args == null || args.Length == 0) return text;
+                try { return string.Format(text, args); } catch { return text; }
+            }
             if (Table().TryGetValue(key, out text))
             {
                 try { return args == null || args.Length == 0 ? GameStrings.ParseLanguageRules(text) : GameStrings.FormatLocalizedString(text, args); }

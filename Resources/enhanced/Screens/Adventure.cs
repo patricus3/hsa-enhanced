@@ -12,8 +12,9 @@ namespace HSAEnhanced
     // Solo Adventures on our core, from the game's adventure data:
     //   the chooser: every adventure and mode the game offers now (locked ones say why); Enter
     //     chooses it as clicking it and pressing Choose does
-    //   a book page (Book of Heroes, Descent of Dragons, ...): the chapters with their state, or a
-    //     chapter's missions; Enter opens the chapter / starts the mission
+    //   a book (Book of Heroes, Descent of Dragons, ...): the chapter list (every chapter, with its
+    //     state; Enter turns to it), a chapter's missions (Enter starts one), the rewards page; Left /
+    //     Right turn the pages as the book's arrows do, Backspace on a page goes to the chapter list
     //   the older adventures' mission display: every boss of every wing with its state; Enter starts
     //     it (the deck picker when it needs a deck)
     // The deck and opponent pickers are the deck tray's (DeckTray); anything else the generic reader's.
@@ -63,6 +64,9 @@ namespace HSAEnhanced
         {
             if (!now && Time.unscaledTime < m_next) return m_menu != null;
             m_next = Time.unscaledTime + 0.5f;
+            // the book's pages turning: the new page is read once it lies open
+            var book = Manager();
+            if (book != null && book.ArePagesTurning()) { m_next = Time.unscaledTime + 0.1f; return m_menu != null && m_key != null; }
             string key, title; List<GameButton> items;
             if (!Build(out key, out title, out items) || items.Count == 0)
             {
@@ -171,12 +175,29 @@ namespace HSAEnhanced
         }
 
         // ---- book pages -----------------------------------------------------------------------
+        // The book as sighted players have it: its chapter list (the map page) and its pages, turned
+        // with the book's arrows (Left / Right, Page Up / Page Down); Backspace on a chapter goes back
+        // to the chapter list as the game's back does. Every adventure with a book works this way.
 
         static AdventureBookPageDisplay s_page;
+
+        internal static AdventureBookPageManager Manager()
+        {
+            var m = AdventureBookPageManager.m_instance;
+            return m != null && m.isActiveAndEnabled ? m : null;
+        }
 
         static AdventureBookPageDataModel BookPage()
         {
             s_page = null;
+            // the page the book shows now (it has two page objects; the other one is the last page)
+            var mgr = Manager();
+            if (mgr != null)
+            {
+                var current = Ref.Invoke(mgr, "GetCurrentPage") as AdventureBookPageDisplay;
+                var model = current == null || !current ? null : Ref.Get<AdventureBookPageDataModel>(current, "m_pageDataModel");
+                if (model != null) { s_page = current; return model; }
+            }
             foreach (var d in UnityEngine.Object.FindObjectsByType<AdventureBookPageDisplay>(FindObjectsSortMode.None))
             {
                 var model = d == null || !d.isActiveAndEnabled ? null : Ref.Get<AdventureBookPageDataModel>(d, "m_pageDataModel");
@@ -185,35 +206,86 @@ namespace HSAEnhanced
             return null;
         }
 
+        static List<PageNode> Nodes(AdventureBookPageManager mgr)
+        {
+            return mgr == null ? null : Ref.Get<List<PageNode>>(mgr, "m_pageNodes");
+        }
+
+        static bool HasMap(AdventureBookPageManager mgr) { return mgr != null && Ref.Get<int>(mgr, "m_mapPageNumber") > 0; }
+
+        // the chapters in book order, with their page numbers
+        static List<KeyValuePair<int, ChapterPageData>> Chapters(AdventureBookPageManager mgr)
+        {
+            var list = new List<KeyValuePair<int, ChapterPageData>>();
+            var nodes = Nodes(mgr);
+            if (nodes == null) return list;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var c = nodes[i] == null ? null : nodes[i].PageData as ChapterPageData;
+                if (c != null && c.WingRecord != null) list.Add(new KeyValuePair<int, ChapterPageData>(i + 1, c));
+            }
+            return list;
+        }
+
+        // a book with two campaigns (Galakrond's Awakening: the Explorers' and E.V.I.L.'s): which one
+        static string Section(AdventureBookPageManager mgr, int section)
+        {
+            var chapters = Chapters(mgr);
+            if (section < 0 || chapters.Count == 0 || !chapters.Exists(c => c.Value.BookSection != chapters[0].Value.BookSection)) return null;
+            if (chapters[0].Value.Adventure == AdventureDbId.DRAGONS)
+                return Str.Word(section == 1 ? "GLUE_ADVENTURE_CARDBACKPAGE_DRG_EVILCARD_NAME_EVIL" : "GLUE_ADVENTURE_CARDBACKPAGE_DRG_EVILCARD_NAME_GOOD");
+            return (section + 1).ToString();
+        }
+
+        static string WingName(ChapterPageData c)
+        {
+            try { return Str.Clean(c.WingRecord.Name == null ? null : c.WingRecord.Name.GetString()); } catch { return null; }
+        }
+
+        // a chapter's state: the page's own data when it has it (time locks, unlock texts), else progress
+        static string ChapterState(ChapterPageData c, AdventureBookPageDataModel page)
+        {
+            if (page != null && page.AllChaptersData != null)
+                foreach (var m in page.AllChaptersData)
+                    if (m != null && m.WingId == c.WingRecord.ID) return ChapterState(m);
+            try
+            {
+                var progress = AdventureProgressMgr.Get();
+                if (progress == null) return null;
+                if (!progress.OwnsWing(c.WingRecord.ID)) return Str.NotOwned;
+                if (progress.IsWingComplete(c.Adventure, c.AdventureMode, (WingDbId)c.WingRecord.ID)) return Str.Completed;
+            }
+            catch (Exception e) { Log.Error(e); }
+            return null;
+        }
+
         static bool Book(AdventureBookPageDataModel page, ref string key, ref string title, List<GameButton> items)
         {
             var display = s_page;
+            var mgr = Manager();
             if (page.PageType == AdventureBookPageType.MAP)
             {
+                // the chapter list: every chapter of the book; Enter turns to its page
                 key = "book:map";
-                title = Str.Clean(AdventureName());
-                var map = Ref.Get(display, "m_chapterButtonClickablesNameMap") as IEnumerable;
-                if (map == null) return false;
-                foreach (var entry in map)
+                title = Str.Join(Str.Clean(AdventureName()), Speech.S("HSA_ENHANCED_ADVENTURE_CHAPTERS"), Str.Clean(page.NumChaptersCompletedText));
+                foreach (var entry in Chapters(mgr))
                 {
-                    var t = entry.GetType();
-                    var name = t.GetProperty("Key") == null ? null : t.GetProperty("Key").GetValue(entry, null) as string;
-                    var button = t.GetProperty("Value") == null ? null : t.GetProperty("Value").GetValue(entry, null) as Clickable;
-                    if (string.IsNullOrEmpty(name) || button == null || !button) continue;
-                    var chapter = ChapterNamed(page, name);
-                    var label = Str.Join(Str.Clean(name), chapter == null ? null : ChapterState(chapter));
-                    var b = button;
-                    items.Add(new GameButton { Target = b, Label = label, Click = () => { Log.Info("adventure: chapter " + name); Ui.Press(b); } });
+                    var c = entry.Value;
+                    int pageNum = entry.Key;
+                    var name = WingName(c);
+                    var label = Str.Join(Section(mgr, c.BookSection), name, ChapterState(c, page));
+                    items.Add(new GameButton { Target = display, Label = label, Click = () => FlipTo(pageNum, name) });
                 }
+                if (items.Count == 0) return false;
                 return true;
             }
             if (page.PageType == AdventureBookPageType.CHAPTER && page.ChapterData != null && page.ChapterData.Missions != null)
             {
-                key = "book:chapter:" + page.ChapterData.Name;
-                title = Str.Clean(page.ChapterData.Name);
-                if (!string.IsNullOrEmpty(page.ChapterData.Description)) title = Str.Join(title, Str.Clean(page.ChapterData.Description));
+                var chapter = page.ChapterData;
+                key = "book:chapter:" + chapter.WingId + ":" + chapter.Name;
+                title = Str.Join(Section(mgr, (int)chapter.MoralAlignment), Str.Clean(chapter.Name), ChapterState(chapter), Str.Clean(chapter.Description));
                 int n = 1;
-                foreach (var m in page.ChapterData.Missions)
+                foreach (var m in chapter.Missions)
                 {
                     if (m == null) continue;
                     var mission = m;
@@ -226,9 +298,58 @@ namespace HSAEnhanced
                     } });
                     n++;
                 }
+                if (items.Count == 0) items.Add(new GameButton { Target = display, Label = Str.Join(Str.Clean(chapter.Name), ChapterState(chapter)), Click = () => { } });
+                return true;
+            }
+            if (page.PageType == AdventureBookPageType.REWARD)
+            {
+                // the rewards page: what it shows
+                key = "book:reward";
+                title = Str.Word("GLUE_ADVENTURE_REWARD_PAGE_TITLE_PROGRESS", "GLUE_ADVENTURE_REWARD_PAGE_TITLE");
+                foreach (var text in new[] { page.NumBossesDefeatedText, page.NumCardsCollectedText })
+                    if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
+                if (page.NumChaptersOwnedText != null)
+                    foreach (var text in page.NumChaptersOwnedText)
+                        if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
+                if (items.Count == 0) items.Add(new GameButton { Target = display, Label = title, Click = () => { } });
                 return true;
             }
             return false;
+        }
+
+        static void FlipTo(int pageNum, string name)
+        {
+            var mgr = Manager();
+            if (mgr == null || mgr.ArePagesTurning()) return;
+            if (!(Ref.Invoke(mgr, "CanUserTurnPages") is bool) || !(bool)Ref.Invoke(mgr, "CanUserTurnPages")) return;
+            Log.Info("adventure: chapter " + name + " (page " + pageNum + ")");
+            mgr.FlipToPage(pageNum, null, null);
+        }
+
+        // the book's arrows: false when this is no book
+        internal static bool TurnPage(int step)
+        {
+            var mgr = Manager();
+            if (mgr == null || BookPage() == null) return false;
+            if (mgr.ArePagesTurning()) return true;
+            bool has = Ref.Get<bool>(mgr, step > 0 ? "m_hasNextPage" : "m_hasPreviousPage");
+            if (!has) { Speech.Say(Speech.S("HSA_ENHANCED_ADVENTURE_NO_MORE_PAGES"), true); return true; }
+            var can = Ref.Invoke(mgr, "CanUserTurnPages");
+            if (!(can is bool) || !(bool)can) return true;
+            Log.Info("adventure: page " + (step > 0 ? "right" : "left"));
+            Ref.Call(mgr, step > 0 ? "PageRight" : "PageLeft", null, null);
+            return true;
+        }
+
+        // Backspace on a chapter (or rewards) page: the chapter list, as the game's back does
+        static bool BackToMap()
+        {
+            var mgr = Manager();
+            var page = mgr == null ? null : BookPage();
+            if (page == null || page.PageType == AdventureBookPageType.MAP || !HasMap(mgr)) return false;
+            if (mgr.ArePagesTurning()) return true;
+            Log.Info("adventure: back to the chapters");
+            return AdventureBookPageManager.NavigateToMapPage();
         }
 
         static string AdventureName()
@@ -236,14 +357,6 @@ namespace HSAEnhanced
             var config = AdventureConfig.Get();
             var record = config == null ? null : GameDbf.Adventure.GetRecord((int)config.GetSelectedAdventure());
             return record == null || record.Name == null ? "" : record.Name.GetString();
-        }
-
-        static AdventureChapterDataModel ChapterNamed(AdventureBookPageDataModel page, string name)
-        {
-            if (page.AllChaptersData == null) return null;
-            foreach (var c in page.AllChaptersData)
-                if (c != null && Labels.Norm(c.Name) == Labels.Norm(name)) return c;
-            return null;
         }
 
         static string ChapterState(AdventureChapterDataModel c)
@@ -327,6 +440,7 @@ namespace HSAEnhanced
         // the adventure's own sub-screen stack first, then the game's back (to Game Modes)
         static void Back()
         {
+            if (BackToMap()) return;
             var config = AdventureConfig.Get();
             if (config != null && config.CurrentSubScene != Assets.AdventureData.Adventuresubscene.CHOOSER)
             {
@@ -338,9 +452,25 @@ namespace HSAEnhanced
             Navigation.GoBack();
         }
 
-        internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }
+        bool InBook { get { return m_key != null && m_key.StartsWith("book:"); } }
 
-        internal override string Help() { return m_menu == null ? "" : m_menu.Help(); }
+        internal override bool HandleKey()
+        {
+            if (m_menu == null) return false;
+            if (InBook)
+            {
+                if (Keys.Left.Pressed || Keys.PageUp.Pressed) return TurnPage(-1);
+                if (Keys.Right.Pressed || Keys.PageDown.Pressed) return TurnPage(1);
+            }
+            return m_menu.HandleKey();
+        }
+
+        internal override string Help()
+        {
+            if (m_menu == null) return "";
+            if (!InBook) return m_menu.Help();
+            return Speech.S("HSA_ENHANCED_ADVENTURE_BOOK_HELP", Keys.Enter.Name, Keys.Left.Name, Keys.Right.Name, Keys.Back.Name);
+        }
 
         internal override void Read() { if (m_menu != null) m_menu.StartReading(); }
     }
