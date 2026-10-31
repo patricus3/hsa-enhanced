@@ -161,7 +161,8 @@ namespace HSAEnhanced
             var response = gs.GetResponseMode();
             if (response != m_lastResponse)
             {
-                if ((response == GameState.ResponseMode.OPTION_TARGET || response == GameState.ResponseMode.OPTION_REVERSE_TARGET) && m_mode != Mode.Choices)
+                // not while Shift+F / Ctrl+F attack the hero: the mod picks the target itself
+                if ((response == GameState.ResponseMode.OPTION_TARGET || response == GameState.ResponseMode.OPTION_REVERSE_TARGET) && m_mode != Mode.Choices && !m_attackingFace)
                     Say(Speech.S(K.GAMEPLAY_CHOOSE_TARGET));
                 m_lastResponse = response;
             }
@@ -884,8 +885,21 @@ namespace HSAEnhanced
             Jobs.Run(Attack(null));
         }
 
+        bool m_attackingFace;      // Shift+F / Ctrl+F at work: the game's target mode is ours to answer
+
         // each attacker (null: every one the game allows, asked again after each attack) at the enemy hero
         IEnumerator Attack(List<Entity> only)
+        {
+            m_attackingFace = true;
+            try
+            {
+                var e = AttackEach(only);
+                while (e.MoveNext()) yield return e.Current;
+            }
+            finally { m_attackingFace = false; }
+        }
+
+        IEnumerator AttackEach(List<Entity> only)
         {
             for (int guard = 0; guard < 10; guard++)
             {
