@@ -173,7 +173,7 @@ namespace HSAEnhanced
                     Say(Speech.S(K.GAMEPLAY_CHOOSE_TARGET));
                 m_lastResponse = response;
             }
-            if (m_mode == Mode.Place && (m_placing == null || !gs.IsInMainOptionMode() || m_placing.GetZone() != TAG_ZONE.HAND)) m_mode = Mode.Browse;
+            if (m_mode == Mode.Place && (m_placing == null || !gs.IsInMainOptionMode() || m_placing.GetZone() != TAG_ZONE.HAND)) { if (m_grabbed) CancelPlacement(); else m_mode = Mode.Browse; }
             if (m_confirmEndTurn && !gs.IsInMainOptionMode()) m_confirmEndTurn = false;
         }
 
@@ -494,26 +494,87 @@ namespace HSAEnhanced
                 Say(WhyNot(e) ?? Str.Join(Str.Clean(e.GetName()), Str.Unavailable));
                 return;
             }
-            // the sounds a click makes: picking a card up from the hand, an attacker getting ready
-            try
-            {
-                if (e.GetZone() == TAG_ZONE.HAND)
-                    SoundManager.Get().LoadAndPlay((AssetReference)"FX_MinionSummon01_DrawFromHand_01.prefab:c8adc026a7f5d0a4cb0706627a980c58", card.gameObject);
-                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter() && !e.IsInteractableObject())
-                    AttackCry(card);
-            }
-            catch (Exception ex) { Log.Error(ex); }
-            // from hand, a minion or location goes somewhere on the board: ask where first
+            // from hand, a minion or location goes somewhere on the board: picked up as the game does when it
+            // is grabbed (its sound, held over the board, the minions making room where it would go); where
+            // is asked first
             if (e.GetZone() == TAG_ZONE.HAND && (e.IsMinion() || e.IsLocation()))
             {
                 m_placing = e;
                 m_opposingSide = false;
                 m_slot = Zone(false) == null ? 1 : Zone(false).GetCards().Count + 1;
                 m_mode = Mode.Place;
+                m_grabbed = Grab(card);
+                if (!m_grabbed) PickUpSound(card);
                 SayPlace();
                 return;
             }
+            // the sounds a click makes: picking a card up from the hand, an attacker getting ready
+            try
+            {
+                if (e.GetZone() == TAG_ZONE.HAND) PickUpSound(card);
+                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter() && !e.IsInteractableObject())
+                    AttackCry(card);
+            }
+            catch (Exception ex) { Log.Error(ex); }
             Respond(e, GAME_TAG.TAG_NOT_SET);
+        }
+
+        static void PickUpSound(Card card)
+        {
+            try { SoundManager.Get().LoadAndPlay((AssetReference)"FX_MinionSummon01_DrawFromHand_01.prefab:c8adc026a7f5d0a4cb0706627a980c58", card.gameObject); }
+            catch (Exception ex) { Log.Error(ex); }
+        }
+
+        bool m_grabbed;           // the card being placed is held by the game (InputManager.GrabCard)
+        float m_slotNudge;        // a correction to where the mouse points for the slot (see AlignSlot)
+
+        // the game's own pick-up of a card (as a mouse press on it does)
+        static bool Grab(Card card)
+        {
+            try
+            {
+                var im = InputManager.Get();
+                if (im == null || card == null || im.GetHeldCard() != null) return false;
+                Ref.Call(im, "GrabCard", card.gameObject);
+                bool held = im.GetHeldCard() == card;
+                Log.Info("match: " + (held ? "picked up " : "could not pick up ") + card.GetEntity().GetName());
+                return held;
+            }
+            catch (Exception ex) { Log.Error(ex); return false; }
+        }
+
+        // the held card over the chosen slot: the game makes room there, shows a Magnetic link, and its drop
+        // places the card there (InputManager.PlayZoneSlotMousedOver: the slot under the mouse)
+        void PointSlot()
+        {
+            var zone = Zone(m_opposingSide);
+            if (zone == null) return;
+            int used = 0;
+            foreach (var c in zone.GetCards()) if (c != null && !c.IsBeingDragged) used++;
+            float width = zone.GetSlotWidth();
+            float left = zone.transform.position.x - (used + 1) * width / 2f;
+            var world = zone.transform.position;
+            world.x = left + (m_slot - 0.5f + m_slotNudge) * width;
+            VirtualMouse.PointAtWorld(world);
+        }
+
+        // the game reads the slot from where the mouse meets the board, a little off the zone's own height:
+        // nudged until the game's slot is the one chosen
+        IEnumerator AlignSlot(int want, bool opposing)
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                yield return null;
+                if (m_mode != Mode.Place || !m_grabbed || m_slot != want || m_opposingSide != opposing) yield break;
+                var zone = Zone(opposing);
+                if (zone == null) yield break;
+                int got = zone.GetSlotMousedOver();
+                if (got == want) yield break;
+                if (got < 1) continue;
+                m_slotNudge += want > got ? 0.2f : -0.2f;
+                PointSlot();
+            }
+            Log.Info("match: the slot under the mouse is not " + want);
         }
 
         void Respond(Entity e, GAME_TAG keyword)
@@ -523,7 +584,34 @@ namespace HSAEnhanced
             {
                 if (!InputManager.Get().DoNetworkResponse(e, true, keyword)) { Log.Info("match: the game refused " + e.GetName()); return; }
                 if (e.GetZone() == TAG_ZONE.PLAY && e.IsCardButton()) ButtonClicked(e);
+                else if (e.GetZone() == TAG_ZONE.PLAY && e.IsCharacter()) AttackerClicked(e);
             });
+        }
+
+        // What the game's own click on an attacker does once it is accepted (HandleClickOnCardInBattlefield):
+        // the attack arrow from it, the enemy Taunts shown, its attack spell started (the attack sound came
+        // with the key press already)
+        static void AttackerClicked(Entity e)
+        {
+            try
+            {
+                var im = InputManager.Get();
+                var card = e.GetCard();
+                var gs = GS;
+                if (im == null || card == null || gs == null || !gs.IsInTargetMode()) return;
+                var reticle = Ref.Get<TargetReticleManager>(im, "m_targetReticleManager");
+                if (reticle != null) reticle.CreateFriendlyTargetArrow(e, false, true, null, false, true);
+                bool real = !e.IsInteractableObject();
+                if (!e.HasTag(GAME_TAG.IGNORE_TAUNT) && real) gs.ShowEnemyTauntCharacters();
+                if (card.IsAttacking()) return;
+                var spell = card.GetActorAttackSpellForInput();
+                if (spell != null)
+                {
+                    if (e.GetRealTimeIsImmuneWhileAttacking()) card.GetActor().ActivateSpellBirthState(SpellType.IMMUNE);
+                    spell.ActivateState(SpellStateType.BIRTH);
+                }
+            }
+            catch (Exception ex) { Log.Error(ex); }
         }
 
         // What the game's own click on the hero power (or a game-mode button) does once it is accepted
@@ -603,7 +691,7 @@ namespace HSAEnhanced
             else if (Bind.SWITCH_TO_OPPOSING_SUMMONING_SIDE.Pressed && m_placing.HasDisguisedAction()) { m_opposingSide = true; m_slot = Zone(true) == null ? 1 : Zone(true).GetCards().Count + 1; SayPlace(); return true; }
             else if (Bind.SWITCH_TO_FRIENDLY_SUMMONING_SIDE.Pressed && m_opposingSide) { m_opposingSide = false; m_slot = Zone(false).GetCards().Count + 1; SayPlace(); return true; }
             else if (Keys.Enter.Pressed) { Place(); return true; }
-            else if (Keys.Back.Pressed) { MagneticDropped(); m_mode = Mode.Browse; return true; }
+            else if (Keys.Back.Pressed) { CancelPlacement(); return true; }
             else if (Combat.CardLines(this) || Combat.StatusKeys(this)) return true;
             else return true;
             if (m_slot != was) SayPlace();
@@ -626,7 +714,13 @@ namespace HSAEnhanced
                 args = new object[] { Str.Clean(cards[m_slot - 2].GetEntity().GetName()), Str.Clean(cards[m_slot - 1].GetEntity().GetName()) };
             }
             Say(Speech.S(key, args));
-            MagneticHover();
+            if (m_grabbed)
+            {
+                m_slotNudge = 0;
+                PointSlot();
+                Jobs.Run(AlignSlot(m_slot, m_opposingSide));
+            }
+            else MagneticHover();
         }
 
         // A Magnetic minion held next to a Mech it can join: the game's beam and its sound, as when the card
@@ -643,6 +737,16 @@ namespace HSAEnhanced
                 zone.OnMagneticHeld(card);
             }
             catch (Exception ex) { Log.Error(ex); }
+        }
+
+        // Backspace while placing: the held card back to the hand, as the game's right click does
+        void CancelPlacement()
+        {
+            m_mode = Mode.Browse;
+            var im = InputManager.Get();
+            if (m_grabbed && im != null && im.GetHeldCard() != null) { m_grabbed = false; Cancel(); return; }
+            m_grabbed = false;
+            MagneticDropped();
         }
 
         // the placement given up: the beam goes, as when a dragged card is let go
@@ -669,6 +773,16 @@ namespace HSAEnhanced
             int slot = m_slot;
             int pos = ZoneMgr.Get().PredictZonePosition(e, zone, slot);
             Log.Info("match: place " + e.GetName() + " at " + slot + (m_opposingSide ? " (opponent's side)" : ""));
+            // held: the game's own drop (as letting go of the mouse there)
+            var im = InputManager.Get();
+            if (m_grabbed && im != null && im.GetHeldCard() == e.GetCard())
+            {
+                m_grabbed = false;
+                if (zone.GetSlotMousedOver() != slot) Log.Info("match: the game's slot is " + zone.GetSlotMousedOver() + ", not " + slot);
+                if (!im.DropHeldCard()) Log.Info("match: the game refused the drop");
+                return;
+            }
+            m_grabbed = false;
             Combat.WhenReady(this, e, () =>
             {
                 GS.SetSelectedOptionPosition(pos);
@@ -814,6 +928,8 @@ namespace HSAEnhanced
         {
             m_line = 0;
             if (m_at < 0 || m_at >= m_list.Count) return;
+            // the game's hover on the card looked at (its keyword help, as under the mouse)
+            if (!GS.IsInTargetMode() && m_list[m_at] != null) VirtualMouse.PointAt(m_list[m_at].gameObject);
             var lines = CombatCards.Lines(m_list[m_at]);
             var first = lines.Count > 0 ? lines[0] : Str.Clean(m_list[m_at].GetEntity().GetName());
             var extra = m_mode == Mode.Mulligan ? Marked(m_at) : null;

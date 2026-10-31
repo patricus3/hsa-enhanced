@@ -32,8 +32,11 @@ namespace HSAEnhanced.Core
     }
 
     // Without Hearthstone Access: a mouse the game sees through its own input layer
-    // (InputCollection). It answers only while it is clicking, so the real mouse keeps working.
+    // (InputCollection). It answers only while it clicks or points, so the real mouse keeps working.
     // A click: the position from the next frame on, the button down for one frame, then up.
+    // Pointing (in a match): it rests where the keyboard is (the card looked at, a summoning slot, a
+    // target), so the game does what it does under a sighted player's mouse: the hover, the card held
+    // over the board, the target arrow. Moving the real mouse ends it; so does leaving the match.
     class VirtualMouse : IInput
     {
         static VirtualMouse s_mouse;
@@ -41,6 +44,47 @@ namespace HSAEnhanced.Core
         int m_step;            // 0 idle; 1 moved; 2 down; 3 up; then idle again after a few frames
         int m_frame;
         bool m_down, m_wasDown;
+        bool m_pointing;
+        Vector3 m_realAt;      // the real mouse when pointing began
+
+        static Vector3 ScreenOf(GameObject go)
+        {
+            var drawer = CameraUtils.FindFirstByLayer(go.layer);
+            var cam = drawer != null ? drawer : Camera.main;
+            if (cam == null) return Vector3.zero;
+            var screen = cam.WorldToScreenPoint(go.transform.position);
+            screen.z = 0;
+            return screen;
+        }
+
+        // rest over this object (a card)
+        internal static void PointAt(GameObject go)
+        {
+            if (go == null) return;
+            Ensure();
+            s_mouse.m_position = ScreenOf(go);
+            BeginPointing();
+        }
+
+        // rest over this point of the board (a summoning slot)
+        internal static void PointAtWorld(Vector3 world)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            Ensure();
+            var screen = cam.WorldToScreenPoint(world);
+            screen.z = 0;
+            s_mouse.m_position = screen;
+            BeginPointing();
+        }
+
+        static void BeginPointing()
+        {
+            if (!s_mouse.m_pointing) s_mouse.m_realAt = Input.mousePosition;
+            s_mouse.m_pointing = true;
+        }
+
+        internal static void StopPointing() { if (s_mouse != null) s_mouse.m_pointing = false; }
 
         static void Ensure()
         {
@@ -72,6 +116,12 @@ namespace HSAEnhanced.Core
         internal static void Step()
         {
             var m = s_mouse;
+            if (m != null && m.m_pointing)
+            {
+                var scenes = SceneMgr.Get();
+                if ((Input.mousePosition - m.m_realAt).sqrMagnitude > 25f) { m.m_pointing = false; Log.Info("virtual mouse: the real mouse moved"); }
+                else if (scenes == null || scenes.GetMode() != SceneMgr.Mode.GAMEPLAY) m.m_pointing = false;
+            }
             if (m == null || m.m_step == 0 || Time.frameCount == m.m_frame) return;
             m.m_frame = Time.frameCount;
             m.m_wasDown = m.m_down;
@@ -84,7 +134,7 @@ namespace HSAEnhanced.Core
             }
         }
 
-        bool Active { get { return m_step != 0; } }
+        bool Active { get { return m_step != 0 || m_pointing; } }
 
         public bool GetMousePosition(out Vector3 position) { position = m_position; return Active; }
         public bool GetAnyKey(out bool value) { value = false; return false; }

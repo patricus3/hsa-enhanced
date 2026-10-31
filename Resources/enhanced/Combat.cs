@@ -147,6 +147,28 @@ namespace HSAEnhanced
             }
             Say(gameplay, first);
             SyncHsa(gameplay, card);
+            Point(card);
+        }
+
+        // The game's mouse rests on the card looked at, as a sighted player's would: its hover (the hand
+        // card raised, a minion's tooltip) and, while a target is chosen, the arrow on it with the game's
+        // damage preview. While targeting it goes only where the arrow can (the board, the heroes; the
+        // hand when the option targets it): anywhere else the game would cancel the targeting.
+        internal static void Point(Card card)
+        {
+            try
+            {
+                var gs = GameState.Get();
+                var e = card == null ? null : card.GetEntity();
+                var im = InputManager.Get();
+                if (gs == null || e == null || im == null || im.GetHeldCard() != null) return;
+                var zone = e.GetZone();
+                if (zone != TAG_ZONE.PLAY && zone != TAG_ZONE.HAND) return;
+                if (gs.IsInTargetMode() && zone == TAG_ZONE.HAND && !gs.DoesSelectedOptionHaveHandTarget()) return;
+                if (zone == TAG_ZONE.HAND && !e.IsControlledByFriendlySidePlayer()) return;
+                VirtualMouse.PointAt(card.gameObject);
+            }
+            catch (Exception ex) { Log.Error(ex); }
         }
 
         // HSA's focused card follows ours: its Enter, targeting and pointer act on this card
