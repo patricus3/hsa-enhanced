@@ -513,6 +513,15 @@ static class Enhance
             o.Add(il.Create(OpCodes.Brfalse, original));
             o.Add(il.Create(OpCodes.Ret));
         }, AtStart: true),
+        // Hearthstone Access's game speed: the power queue waits while our announcement is spoken
+        new("GameState", "CanProcessPowerQueue", "StandaloneHoldPowerQueue", (il, m, hook, o) =>
+        {
+            var original = m.Body.Instructions[0];
+            o.Add(il.Create(OpCodes.Call, hook));
+            o.Add(il.Create(OpCodes.Brfalse, original));
+            o.Add(il.Create(OpCodes.Ldc_I4_0));
+            o.Add(il.Create(OpCodes.Ret));
+        }, AtStart: true),
         // the game's error line in a match (not enough mana, ...): spoken
         new("GameplayErrorManager", "DisplayMessage", "StandaloneGameError", (il, m, hook, o) =>
         {

@@ -19,6 +19,8 @@ namespace HSAEnhanced
             {
                 Host.Ensure();
                 if (Focus.Typing) return false;
+                if (UnityEngine.Input.anyKeyDown) Pacing.KeyPressed();
+                if (Pacing.SpeedKeys()) return true;
                 // the game acts on Escape when it is let go: the press was ours, so is the release
                 if (s_escapeOurs && UnityEngine.Input.GetKeyUp(UnityEngine.KeyCode.Escape)) { s_escapeOurs = false; return true; }
                 if (Focus.HandleKeys()) return true;
@@ -34,6 +36,13 @@ namespace HSAEnhanced
         }
 
         static bool s_escapeOurs;
+
+        // start of GameState.CanProcessPowerQueue(); true: the game waits (our announcement is still being
+        // spoken, Hearthstone Access's game speed)
+        public static bool StandaloneHoldPowerQueue()
+        {
+            try { return Pacing.Holding; } catch { return false; }
+        }
 
         static readonly System.Reflection.MethodInfo EscapeKey = typeof(BnetBar).GetMethod("HandleEscapeKey", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
 
@@ -58,7 +67,7 @@ namespace HSAEnhanced
         // closes the emote tray when the mouse is not over it; while our emote menu is open it stays.
         public static bool StandaloneEmoteInput()
         {
-            try { return EmoteUI.IsOpen; } catch { return false; }
+            try { return EmoteUI.IsOpen || EnemyEmoteUI.IsOpen; } catch { return false; }
         }
 
         // start of GameplayErrorManager.DisplayMessage(message): the game's error line, spoken

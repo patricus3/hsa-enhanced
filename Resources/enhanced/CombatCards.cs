@@ -30,8 +30,7 @@ namespace HSAEnhanced
                 else Normal(card, e, lines);
             }
             catch (Exception ex) { Log.Error(ex); if (lines.Count == 0) lines.Add(Str.Clean(e.GetName())); }
-            // ours: the flavor text last (the game shows it when a card is inspected in the collection)
-            try { var def = e.GetEntityDef(); if (def != null && lines.Count > 0) lines.Add(Str.Clean(def.GetFlavorText())); } catch { }
+            // no flavor text in a match: the game shows it only for a card inspected in the collection
             lines.RemoveAll(l => string.IsNullOrEmpty(l));
             return lines;
         }
@@ -95,12 +94,8 @@ namespace HSAEnhanced
             lines.Add(Str.Clean(name));
             if (e.HasTag(GAME_TAG.EVIL_GLOW)) lines.Add(Speech.S(K.GLOBAL_CURSED));
             if (e.HasTag(GAME_TAG.VALEERASHADOW)) lines.Add(Speech.S(K.GLOBAL_HAUNTED));
+            // "Ready!" when it is; nothing when it is not (as Hearthstone Access: the game's reason comes with Enter)
             if (Ready(card, e)) lines.Add(Speech.S(K.GLOBAL_READY));
-            else
-            {
-                var why = WhyNot(card, e);
-                if (why != null) lines.Add(why);
-            }
             if (e.GetZone() == TAG_ZONE.SECRET)
             {
                 string banner = null;

@@ -39,6 +39,9 @@ namespace HSAEnhanced
         // the card the player is on (null: none)
         internal static Card FocusedCard { get { return s_card; } }
 
+        // nothing looked at any more (Hearthstone Access drops a hand card's focus when a target is asked)
+        internal static void DropFocus() { s_card = null; s_hasZone = false; s_lines.Clear(); }
+
         // spoken as the match screen (ours, or Hearthstone Access's gameplay screen)
         static void Say(object gameplay, string text)
         {
@@ -149,6 +152,27 @@ namespace HSAEnhanced
             SyncHsa(gameplay, card);
         }
 
+        // The game's mouse rests on the card looked at, as a sighted player's would: its hover (the hand
+        // card raised, a minion's tooltip) and, while a target is chosen, the arrow on it with the game's
+        // damage preview. While targeting it goes only where the arrow can (the board, the heroes; the
+        // hand when the option targets it): anywhere else the game would cancel the targeting.
+        internal static void Point(Card card)
+        {
+            try
+            {
+                var gs = GameState.Get();
+                var e = card == null ? null : card.GetEntity();
+                var im = InputManager.Get();
+                if (gs == null || e == null || im == null || im.GetHeldCard() != null) return;
+                var zone = e.GetZone();
+                if (zone != TAG_ZONE.PLAY && zone != TAG_ZONE.HAND) return;
+                if (gs.IsInTargetMode() && zone == TAG_ZONE.HAND && !gs.DoesSelectedOptionHaveHandTarget()) return;
+                if (zone == TAG_ZONE.HAND && !e.IsControlledByFriendlySidePlayer()) return;
+                VirtualMouse.PointAt(card.gameObject);
+            }
+            catch (Exception ex) { Log.Error(ex); }
+        }
+
         // HSA's focused card follows ours: its Enter, targeting and pointer act on this card
         static void SyncHsa(object gameplay, Card card)
         {
@@ -238,9 +262,13 @@ namespace HSAEnhanced
             };
             side(true); side(false);
             var valid = candidates.FindAll(c => IsValid(gs, c.GetEntity()));
-            if (valid.Count == 0) { Say(gameplay, Speech.S(K.GAMEPLAY_NO_VALID_PLAYS)); return true; }
+            // nothing valid (always so in the opponent's turn): said, and the focus goes, as Hearthstone Access
+            if (valid.Count == 0) { Say(gameplay, Speech.S(K.GAMEPLAY_NO_VALID_PLAYS)); DropFocus(); return true; }
             if (valid.Count == 1) { Focus(gameplay, valid[0], true); return true; }
             int at = s_card == null ? -1 : candidates.IndexOf(s_card);
+            // choosing a target with your own hero power looked at: from the start of the list again
+            var looked = s_card == null ? null : s_card.GetEntity();
+            if (looked != null && looked.IsHeroPower() && looked.IsControlledByFriendlySidePlayer() && gs.IsInTargetMode()) at = -1;
             if (at < 0) { Focus(gameplay, next ? valid[0] : valid[valid.Count - 1], false); return true; }
             for (int i = 1; i <= candidates.Count; i++)
             {
@@ -287,7 +315,7 @@ namespace HSAEnhanced
             return true;
         }
 
-        // A / Shift+A, D / Shift+D, Shift+C (ours: the opponent's hand, browsable), O (HSA's
+        // A / Shift+A, D / Shift+D, Shift+C (the opponent's hand counted), O (HSA's
         // HandleCheckStatusKeys). I stays HSA's (it runs before these handlers; its pointer follows our focus)
         internal static bool StatusKeys(object gameplay)
         {
@@ -299,9 +327,9 @@ namespace HSAEnhanced
             else if (Bind.SEE_PLAYER_DECK.Pressed) Say(gameplay, Speech.S(K.GAMEPLAY_READ_PLAYER_DECK, Side(true).GetDeckZone().GetCardCount()));
             else if (Bind.SEE_OPPONENT_HAND.Pressed)
             {
+                // the count only, as Hearthstone Access (its cards are not browsed)
                 var hand = Cards(Kind.Hand, false);
                 Say(gameplay, Speech.S(K.GAMEPLAY_READ_OPPONENT_HAND, hand.Count));
-                if (hand.Count > 0) { s_hasZone = false; Focus(gameplay, hand[0], false); }
             }
             else if (Bind.READ_ANOMALIES.Pressed) Anomalies(gameplay);
             else return false;     // other status keys stay HSA's

@@ -9,10 +9,29 @@ REBUILD="$H/src/rebuild.sh"
 LOG="$HOME/Library/Logs/HearthstoneAccess/watch.log"
 mkdir -p "$(dirname "$LOG")"
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
-attempts=0; window_start=$(date +%s); last_hash_check=0; last_restart=0
+attempts=0; window_start=$(date +%s); last_hash_check=0; last_restart=0; last_takeover=0
 
 has_loader() { ps eww -p "$1" -o command= 2>/dev/null | grep -q "DYLD_INSERT_LIBRARIES=$LOADER"; }
 
+# Battle.net with the loader, in a session of its own (so restarting this watcher never takes it down)
+start_bnet() {
+    (cd / && nohup /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or exit 1' \
+        /usr/bin/env DYLD_INSERT_LIBRARIES="$LOADER" /Applications/Battle.net.app/Contents/MacOS/Battle.net >/dev/null 2>&1 &)
+}
+
+# Battle.net opened the usual way (Dock, Finder, Spotlight) starts without the loader. Caught in its
+# first seconds, before its window shows, it is swapped at once for one with the loader: to the
+# player it is just Battle.net starting, and Play starts the game with the mod.
+takeover_bnet() {
+    log "Battle.net opened without HSA loader -> starting it with the loader instead"
+    pkill -9 -x Battle.net 2>/dev/null
+    pkill -9 -f 'Battle.net Helper.app/Contents/MacOS' 2>/dev/null
+    for a in $(pgrep -f 'Agent.app/Contents/MacOS/Agent'); do has_loader "$a" || kill -9 "$a" 2>/dev/null; done
+    for i in $(seq 1 30); do pgrep -x Battle.net >/dev/null || break; sleep 0.1; done
+    start_bnet
+}
+
+# a Battle.net that has been running a while without the loader: asked to quit, then started with it
 restart_bnet() {
     log "Battle.net without HSA loader -> restarting it with the loader"
     osascript -e 'quit app "Battle.net"' >/dev/null 2>&1
@@ -20,8 +39,8 @@ restart_bnet() {
     pkill -x Battle.net 2>/dev/null
     for i in $(seq 1 10); do pgrep -f 'Agent.app/Contents/MacOS/Agent' >/dev/null || break; sleep 1; done
     pkill -f 'Agent.app/Contents/MacOS/Agent' 2>/dev/null; sleep 1
-    (cd / && nohup /usr/bin/env DYLD_INSERT_LIBRARIES="$LOADER" /Applications/Battle.net.app/Contents/MacOS/Battle.net >/dev/null 2>&1 &)
-    sleep 15; fix_agents
+    start_bnet
+    sleep 3
 }
 
 # An Agent that outlived the old Battle.net keeps running without the loader;
@@ -90,7 +109,7 @@ PY
 
 log "watcher started"
 while true; do
-    sleep 2
+    sleep 0.5                                        # often: Battle.net is caught before its window shows
     [ -f "$LOADER" ] || continue
     game=$(pgrep -x Hearthstone)
     now=$(date +%s)
@@ -107,9 +126,15 @@ while true; do
     check_release_update && exit 0
     bnet=$(pgrep -x Battle.net | head -1); [ -z "$bnet" ] && continue
     if has_loader "$bnet"; then fix_agents; continue; fi
-    # give a freshly (re)started Battle.net 5 s to settle (its updates restart it)
     secs=$(ps -p "$bnet" -o etime= | tr -d ' ' | awk -F'[-:]' '{n=NF; s=$n+($(n-1))*60; if(n>2)s+=$(n-2)*3600; if(n>3)s+=$(n-3)*86400; print s}')
-    [ "${secs:-0}" -lt 5 ] && continue
+    # just opened by the player: swapped at once (at most every 10 s, in case something keeps
+    # opening it the usual way, e.g. Battle.net restarting itself after an update)
+    if [ "${secs:-0}" -lt 30 ] && [ $((now - last_takeover)) -ge 10 ]; then
+        last_takeover=$now
+        takeover_bnet
+        continue
+    fi
+    [ "${secs:-0}" -lt 30 ] && continue
     # if it keeps coming back without the loader (e.g. Battle.net updating itself),
     # slow down to one attempt a minute instead of giving up
     [ $((now - window_start)) -gt 300 ] && { attempts=0; window_start=$now; }

@@ -102,7 +102,8 @@ namespace HSAEnhanced
 
         string Entry()
         {
-            return Speech.S(K.GAMEPLAY_HISTORY_LOG_ENTRY_FORMAT, HistoryLog.At(m_at), m_at + 1, HistoryLog.Count);
+            // the event alone: its place in the list is not said
+            return HistoryLog.At(m_at);
         }
 
         internal override void Read()

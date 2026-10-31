@@ -7,9 +7,11 @@ namespace HSAEnhanced
 {
     // The way into a match, said as it happens (our own design, from the game's state):
     //   "Searching for an Opponent" while matchmaking; "Loading" when the match loads
-    //   who you play against (a player: name and class; the computer: its hero and class)
-    //   how many cards you start with, who goes first
-    //   after your mulligan: "Waiting for opponent" while they choose; the cards you drew instead
+    //   as Hearthstone Access: who you play against (games against players) and how many cards you start
+    //     with when they are dealt;
+    //     who goes first when the game shows its coin toss text (Match reads the starting hand once the game
+    //     waits for the choice)
+    //   after your mulligan: "Opponent is still choosing" while they do; the cards you drew instead
     //   "You get the coin" when it comes; and in any turn "10 seconds remaining" as the rope burns
     static class GameStart
     {
@@ -18,6 +20,7 @@ namespace HSAEnhanced
         static bool s_saidVs, s_saidFirst, s_saidWaiting, s_mulliganDone, s_saidCoin;
         static HashSet<int> s_startHand;
         static float s_mulliganEndedAt;
+        static float s_coinAt = -1;
         static int s_lastRopeSecond = -1;
 
         static string A(string key, params object[] args) { return Speech.S("ACCESSIBILITY_" + key, args); }
@@ -46,6 +49,7 @@ namespace HSAEnhanced
             {
                 s_gs = gs;
                 s_saidVs = s_saidFirst = s_saidWaiting = s_mulliganDone = s_saidCoin = false;
+                s_coinAt = -1;
                 Confirmed = false;
                 s_startHand = null;
                 s_lastRopeSecond = -1;
@@ -68,19 +72,32 @@ namespace HSAEnhanced
                 string name = null;
                 try { name = Str.Clean(them.GetName()); } catch { }
                 if (string.IsNullOrEmpty(name) || mgr.IsAI()) name = Str.Clean(hero.GetName());
-                Say(A("GAMEPLAY_VS_PLAYER_ANNOUNCEMENT", name, cls));
+                // who you play against: in games against players only, as Hearthstone Access
+                bool players = false;
+                try { players = !mgr.IsAI(); } catch { }
+                if (players) { var vs = A("GAMEPLAY_VS_PLAYER_ANNOUNCEMENT", name, cls); Say(vs); HistoryLog.Add(vs); }
                 Say(A("GAMEPLAY_YOU_START_WITH_N_CARDS", start.Count));
                 s_startHand = new HashSet<int>();
                 foreach (var c in start) if (c != null && c.GetEntity() != null) s_startHand.Add(c.GetEntity().GetEntityId());
             }
-            if (!s_saidFirst && s_saidVs)
+
+            // who goes first: when the game shows its coin toss text (it fades in 1.8 s after it is made), as
+            // Hearthstone Access said it
+            if (!s_saidFirst && s_saidVs && mulligan != null)
             {
-                s_saidFirst = true;
-                Say(A(me.HasTag(GAME_TAG.FIRST_PLAYER) ? "GAMEPLAY_YOU_GO_FIRST" : "GAMEPLAY_OPPONENT_GOES_FIRST"));
+                var coin = Ref.Get<GameObject>(mulligan, "coinTossText");
+                if (coin != null && s_coinAt < 0) s_coinAt = Time.unscaledTime;
+                if (s_coinAt >= 0 && Time.unscaledTime - s_coinAt >= 1.8f)
+                {
+                    s_saidFirst = true;
+                    Say(A(me.HasTag(GAME_TAG.FIRST_PLAYER) ? "GAMEPLAY_YOU_GO_FIRST" : "GAMEPLAY_OPPONENT_GOES_FIRST"));
+                }
             }
 
-            // your choice made, theirs still pending
-            if (inMulligan && !s_saidWaiting && mulligan != null && !Ref.Get<bool>(mulligan, "m_waitingForUserInput") && s_saidVs && MulliganConfirmed())
+            // your choice made and your new cards in, the opponent still choosing: only then does the game
+            // show its "Opponent is still choosing..." (against the computer it rarely does)
+            if (inMulligan && !s_saidWaiting && mulligan != null && s_saidVs && MulliganConfirmed()
+                && Ref.Get(mulligan, "m_WaitForOpponentToFinishMulligan") != null && !mulligan.opponentPlayerHasReplacementCards)
             {
                 s_saidWaiting = true;
                 Say(A("GAMEPLAY_WAITING_FOR_OPPONENT"));
@@ -91,6 +108,12 @@ namespace HSAEnhanced
             {
                 s_mulliganDone = true;
                 s_mulliganEndedAt = Time.unscaledTime;
+                // who goes first, if the coin toss text never showed (a mode without it)
+                if (!s_saidFirst)
+                {
+                    s_saidFirst = true;
+                    Say(A(me.HasTag(GAME_TAG.FIRST_PLAYER) ? "GAMEPLAY_YOU_GO_FIRST" : "GAMEPLAY_OPPONENT_GOES_FIRST"));
+                }
                 if (s_startHand != null)
                 {
                     var drawn = new List<string>();

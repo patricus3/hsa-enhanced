@@ -298,12 +298,13 @@ namespace HSAEnhanced
         // the quantity typed in; a wrong number is said and the field opens again
         void AskQuantity(ProductPage page, int max)
         {
-            TextInput.Ask(Speech.S("HSA_ENHANCED_SHOP_QUANTITY_PROMPT", 1, max), text =>
+            var range = Str.Game("GLUE_STORE_PACK_QUANTITY_BODY", max);     // "Type a number from 1 to {0}." (the game's quantity box)
+            TextInput.Ask(Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), range), text =>
             {
                 int n;
                 if (!int.TryParse((text ?? "").Trim(), out n) || n < 1 || n > max)
                 {
-                    Speech.Say(Speech.S("HSA_ENHANCED_SHOP_QUANTITY_ERROR", 1, max), true);
+                    Speech.Say(range, true);
                     return;
                 }
                 if (page == null || !page || Page() != page) return;

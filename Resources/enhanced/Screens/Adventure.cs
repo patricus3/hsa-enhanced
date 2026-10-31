@@ -237,9 +237,47 @@ namespace HSAEnhanced
             return (section + 1).ToString();
         }
 
-        static string WingName(ChapterPageData c)
+        static string Loc(DbfLocValue v)
         {
-            try { return Str.Clean(c.WingRecord.Name == null ? null : c.WingRecord.Name.GetString()); } catch { return null; }
+            try { return v == null ? null : Str.Clean(v.GetString()); } catch { return null; }
+        }
+
+        // the chapter's place in its campaign (1 = its first chapter)
+        static int Position(AdventureBookPageManager mgr, ChapterPageData c)
+        {
+            int n = 0;
+            foreach (var entry in Chapters(mgr))
+            {
+                if (entry.Value.BookSection != c.BookSection) continue;
+                n++;
+                if (entry.Value == c) return n;
+            }
+            return Math.Max(1, c.ChapterNumber);
+        }
+
+        // Galakrond's Awakening: the chapter records have no names; the book shows the game's chapter titles
+        // ("I: Battle at the Frozen Coast") and each campaign's own text for the chapter
+        static string ChapterName(AdventureBookPageManager mgr, ChapterPageData c)
+        {
+            var name = Loc(c.WingRecord.Name);
+            if (string.IsNullOrEmpty(name)) name = Loc(c.WingRecord.NameShort);
+            if (!string.IsNullOrEmpty(name)) return name;
+            int n = Position(mgr, c);
+            if (c.Adventure == AdventureDbId.DRAGONS) name = Str.Word("GLUE_ADVENTURE_CHAPTER_TITLE_DRG_CHAPTER" + n);
+            return string.IsNullOrEmpty(name) ? Str.Game("GLUE_SPJ_CHAPTER_LABEL", n) : name;
+        }
+
+        static string ChapterText(AdventureBookPageManager mgr, ChapterPageData c)
+        {
+            var text = Loc(c.WingRecord.Description);
+            if (!string.IsNullOrEmpty(text) || c.Adventure != AdventureDbId.DRAGONS) return text;
+            return Str.Word("GLUE_ADVENTURE_CHAPTERPAGE_DESCRIPTION_DRG_" + (c.BookSection == 1 ? "EVIL" : "GOOD") + "_CHAPTER" + Position(mgr, c));
+        }
+
+        static ChapterPageData ChapterOfWing(AdventureBookPageManager mgr, int wingId)
+        {
+            foreach (var entry in Chapters(mgr)) if (entry.Value.WingRecord.ID == wingId) return entry.Value;
+            return null;
         }
 
         // a chapter's state: the page's own data when it has it (time locks, unlock texts), else progress
@@ -272,7 +310,7 @@ namespace HSAEnhanced
                 {
                     var c = entry.Value;
                     int pageNum = entry.Key;
-                    var name = WingName(c);
+                    var name = ChapterName(mgr, c);
                     var label = Str.Join(Section(mgr, c.BookSection), name, ChapterState(c, page));
                     items.Add(new GameButton { Target = display, Label = label, Click = () => FlipTo(pageNum, name) });
                 }
@@ -282,8 +320,13 @@ namespace HSAEnhanced
             if (page.PageType == AdventureBookPageType.CHAPTER && page.ChapterData != null && page.ChapterData.Missions != null)
             {
                 var chapter = page.ChapterData;
-                key = "book:chapter:" + chapter.WingId + ":" + chapter.Name;
-                title = Str.Join(Section(mgr, (int)chapter.MoralAlignment), Str.Clean(chapter.Name), ChapterState(chapter), Str.Clean(chapter.Description));
+                // the page's own data model often comes without the name and text: the book's chapter has them
+                string name = Str.Clean(chapter.Name), description = Str.Clean(chapter.Description);
+                var pageChapter = ChapterOfWing(mgr, chapter.WingId);
+                if (string.IsNullOrEmpty(name) && pageChapter != null) name = ChapterName(mgr, pageChapter);
+                if (string.IsNullOrEmpty(description) && pageChapter != null) description = ChapterText(mgr, pageChapter);
+                key = "book:chapter:" + chapter.WingId + ":" + name;
+                title = Str.Join(Section(mgr, (int)chapter.MoralAlignment), name, ChapterState(chapter), description);
                 int n = 1;
                 foreach (var m in chapter.Missions)
                 {
@@ -304,10 +347,21 @@ namespace HSAEnhanced
             if (page.PageType == AdventureBookPageType.REWARD)
             {
                 // the rewards page: what it shows
-                key = "book:reward";
-                title = Str.Word("GLUE_ADVENTURE_REWARD_PAGE_TITLE_PROGRESS", "GLUE_ADVENTURE_REWARD_PAGE_TITLE");
-                foreach (var text in new[] { page.NumBossesDefeatedText, page.NumCardsCollectedText })
-                    if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
+                key = "book:reward:" + page.MoralAlignment;
+                title = Str.Join(Section(mgr, (int)page.MoralAlignment), Str.Word("GLUE_ADVENTURE_REWARD_PAGE_TITLE_PROGRESS", "GLUE_ADVENTURE_REWARD_PAGE_TITLE"));
+                // each number with what it counts, as the page's labels show it ("Bosses defeated, 8/12")
+                var stats = new[]
+                {
+                    new KeyValuePair<string, string>("GLUE_ADVENTURE_REWARD_PAGE_STATISTIC_BOSSES", page.NumBossesDefeatedText),
+                    new KeyValuePair<string, string>("GLUE_ADVENTURE_REWARD_PAGE_STATISTIC_CARDS", page.NumCardsCollectedText),
+                };
+                foreach (var stat in stats)
+                {
+                    var value = Str.Clean(stat.Value);
+                    if (string.IsNullOrEmpty(value)) continue;
+                    var label = Str.Join(Str.Word(stat.Key), value);
+                    items.Add(new GameButton { Target = display, Label = label, Click = () => { } });
+                }
                 if (page.NumChaptersOwnedText != null)
                     foreach (var text in page.NumChaptersOwnedText)
                         if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
