@@ -74,11 +74,14 @@ namespace HSAEnhanced
                 foreach (var c in start) if (c != null && c.GetEntity() != null) s_startHand.Add(c.GetEntity().GetEntityId());
             }
 
-            // your choice made, theirs still pending
-            if (inMulligan && !s_saidWaiting && mulligan != null && !Ref.Get<bool>(mulligan, "m_waitingForUserInput") && s_saidVs && MulliganConfirmed())
+            // your choice made and your new cards in, the opponent still choosing: only then does the game
+            // show its "Opponent is still choosing..." (against the computer it rarely does)
+            if (inMulligan && !s_saidWaiting && mulligan != null && s_saidVs && MulliganConfirmed()
+                && Ref.Get(mulligan, "m_WaitForOpponentToFinishMulligan") != null && !mulligan.opponentPlayerHasReplacementCards)
             {
                 s_saidWaiting = true;
-                Say(A("GAMEPLAY_WAITING_FOR_OPPONENT"));
+                var text = Str.Word("GAMEPLAY_MULLIGAN_WAITING");
+                Say(string.IsNullOrEmpty(text) ? A("GAMEPLAY_WAITING_FOR_OPPONENT") : text);
             }
 
             // the mulligan over: the cards drawn instead of the ones sent back (the coin is its own line)

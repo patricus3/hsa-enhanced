@@ -124,7 +124,7 @@ namespace HSAEnhanced
             // your turn: when the game shows its "Your Turn" banner (the mulligan over, the mana given)
             if (s_turnStartPending && current == null && !mulligan && BannerShown(gs)) { s_turnStartPending = false; YourTurn(gs); }
             // no turn event (some missions): what was held back is not kept forever
-            else if (s_waitingBanner && Time.unscaledTime - s_waitingSince > 10f && gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode()) YourTurn(gs);
+            else if (s_waitingBanner && !mulligan && Time.unscaledTime - s_waitingSince > 10f && CanPlay(gs)) YourTurn(gs);
             // the held lines: once their play has been said, or after a few seconds whatever happened
             if (s_holdFor != null && (s_described.Contains(s_holdFor) || Time.unscaledTime - s_holdSince > 6f)) ReleaseHeld();
         }
@@ -160,10 +160,21 @@ namespace HSAEnhanced
         // game is not waiting for turn events yet": right after the mulligan the turn is reported before
         // the game listens for it and before the mana is given ("Your turn. 0 mana."); without a banner,
         // the turn has begun once you can play
+        // your turn under way: its action step (the mana given), the game taking your plays
+        static bool CanPlay(GameState gs)
+        {
+            try
+            {
+                var step = (TAG_STEP)gs.GetGameEntity().GetTag(GAME_TAG.STEP);
+                return step == TAG_STEP.MAIN_ACTION && gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode();
+            }
+            catch { return false; }
+        }
+
         static bool BannerShown(GameState gs)
         {
             var t = TurnStartManager.Get();
-            bool canPlay = gs.IsFriendlySidePlayerTurn() && gs.IsInMainOptionMode();
+            bool canPlay = CanPlay(gs);
             if (t == null) return canPlay;
             try { return Ref.Get<bool>(t, "m_twoScoopsDisplayed") || t.IsTurnStartIndicatorShowing() || (!t.IsListeningForTurnEvents() && canPlay); } catch { return canPlay; }
         }
