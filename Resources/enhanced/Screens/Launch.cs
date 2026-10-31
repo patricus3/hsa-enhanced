@@ -49,7 +49,9 @@ namespace HSAEnhanced
 
             // the loading popup (a match or mode on its way)
             var popup = UnityEngine.Object.FindObjectOfType<LoadingPopupDisplay>();
-            bool shown = popup != null && popup.gameObject.activeInHierarchy && popup.m_title != null && popup.m_title.gameObject.activeInHierarchy;
+            // shown: the game's own state (the popup also exists, unshown, while a mode such as the
+            // Adventure loads; its title then still says "Starting game")
+            bool shown = popup != null && popup.gameObject.activeInHierarchy && popup.IsShown() && popup.m_title != null && popup.m_title.gameObject.activeInHierarchy;
             if (shown && s_popup != popup)
             {
                 s_popup = popup;

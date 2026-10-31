@@ -282,8 +282,14 @@ namespace HSAEnhanced
             if (page.PageType == AdventureBookPageType.CHAPTER && page.ChapterData != null && page.ChapterData.Missions != null)
             {
                 var chapter = page.ChapterData;
-                key = "book:chapter:" + chapter.WingId + ":" + chapter.Name;
-                title = Str.Join(Section(mgr, (int)chapter.MoralAlignment), Str.Clean(chapter.Name), ChapterState(chapter), Str.Clean(chapter.Description));
+                // the page's own data model often comes without the name and text: the chapter's record has them
+                string name = Str.Clean(chapter.Name), description = Str.Clean(chapter.Description);
+                WingDbfRecord wing = null;
+                try { wing = GameDbf.Wing.GetRecord(chapter.WingId); } catch { }
+                if (string.IsNullOrEmpty(name) && wing != null && wing.Name != null) name = Str.Clean(wing.Name.GetString());
+                if (string.IsNullOrEmpty(description) && wing != null && wing.Description != null) description = Str.Clean(wing.Description.GetString());
+                key = "book:chapter:" + chapter.WingId + ":" + name;
+                title = Str.Join(Section(mgr, (int)chapter.MoralAlignment), name, ChapterState(chapter), description);
                 int n = 1;
                 foreach (var m in chapter.Missions)
                 {
@@ -304,10 +310,21 @@ namespace HSAEnhanced
             if (page.PageType == AdventureBookPageType.REWARD)
             {
                 // the rewards page: what it shows
-                key = "book:reward";
-                title = Str.Word("GLUE_ADVENTURE_REWARD_PAGE_TITLE_PROGRESS", "GLUE_ADVENTURE_REWARD_PAGE_TITLE");
-                foreach (var text in new[] { page.NumBossesDefeatedText, page.NumCardsCollectedText })
-                    if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
+                key = "book:reward:" + page.MoralAlignment;
+                title = Str.Join(Section(mgr, (int)page.MoralAlignment), Str.Word("GLUE_ADVENTURE_REWARD_PAGE_TITLE_PROGRESS", "GLUE_ADVENTURE_REWARD_PAGE_TITLE"));
+                // each number with what it counts, as the page's labels show it ("Bosses defeated, 8/12")
+                var stats = new[]
+                {
+                    new KeyValuePair<string, string>("GLUE_ADVENTURE_REWARD_PAGE_STATISTIC_BOSSES", page.NumBossesDefeatedText),
+                    new KeyValuePair<string, string>("GLUE_ADVENTURE_REWARD_PAGE_STATISTIC_CARDS", page.NumCardsCollectedText),
+                };
+                foreach (var stat in stats)
+                {
+                    var value = Str.Clean(stat.Value);
+                    if (string.IsNullOrEmpty(value)) continue;
+                    var label = Str.Join(Str.Word(stat.Key), value);
+                    items.Add(new GameButton { Target = display, Label = label, Click = () => { } });
+                }
                 if (page.NumChaptersOwnedText != null)
                     foreach (var text in page.NumChaptersOwnedText)
                         if (!string.IsNullOrEmpty(Str.Clean(text))) items.Add(new GameButton { Target = display, Label = Str.Clean(text), Click = () => { } });
