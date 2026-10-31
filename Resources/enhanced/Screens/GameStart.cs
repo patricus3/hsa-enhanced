@@ -7,7 +7,8 @@ namespace HSAEnhanced
 {
     // The way into a match, said as it happens (our own design, from the game's state):
     //   "Searching for an Opponent" while matchmaking; "Loading" when the match loads
-    //   as Hearthstone Access: who you play against and how many cards you start with when they are dealt;
+    //   as Hearthstone Access: who you play against (games against players) and how many cards you start
+    //     with when they are dealt;
     //     who goes first when the game shows its coin toss text (Match reads the starting hand once the game
     //     waits for the choice)
     //   after your mulligan: "Opponent is still choosing" while they do; the cards you drew instead
@@ -71,7 +72,10 @@ namespace HSAEnhanced
                 string name = null;
                 try { name = Str.Clean(them.GetName()); } catch { }
                 if (string.IsNullOrEmpty(name) || mgr.IsAI()) name = Str.Clean(hero.GetName());
-                Say(A("GAMEPLAY_VS_PLAYER_ANNOUNCEMENT", name, cls));
+                // who you play against: in games against players only, as Hearthstone Access
+                bool players = false;
+                try { players = !mgr.IsAI(); } catch { }
+                if (players) { var vs = A("GAMEPLAY_VS_PLAYER_ANNOUNCEMENT", name, cls); Say(vs); HistoryLog.Add(vs); }
                 Say(A("GAMEPLAY_YOU_START_WITH_N_CARDS", start.Count));
                 s_startHand = new HashSet<int>();
                 foreach (var c in start) if (c != null && c.GetEntity() != null) s_startHand.Add(c.GetEntity().GetEntityId());
@@ -96,8 +100,7 @@ namespace HSAEnhanced
                 && Ref.Get(mulligan, "m_WaitForOpponentToFinishMulligan") != null && !mulligan.opponentPlayerHasReplacementCards)
             {
                 s_saidWaiting = true;
-                var text = Str.Word("GAMEPLAY_MULLIGAN_WAITING");
-                Say(string.IsNullOrEmpty(text) ? A("GAMEPLAY_WAITING_FOR_OPPONENT") : text);
+                Say(A("GAMEPLAY_WAITING_FOR_OPPONENT"));
             }
 
             // the mulligan over: the cards drawn instead of the ones sent back (the coin is its own line)

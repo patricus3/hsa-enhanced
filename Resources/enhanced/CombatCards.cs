@@ -94,12 +94,8 @@ namespace HSAEnhanced
             lines.Add(Str.Clean(name));
             if (e.HasTag(GAME_TAG.EVIL_GLOW)) lines.Add(Speech.S(K.GLOBAL_CURSED));
             if (e.HasTag(GAME_TAG.VALEERASHADOW)) lines.Add(Speech.S(K.GLOBAL_HAUNTED));
+            // "Ready!" when it is; nothing when it is not (as Hearthstone Access: the game's reason comes with Enter)
             if (Ready(card, e)) lines.Add(Speech.S(K.GLOBAL_READY));
-            else
-            {
-                var why = WhyNot(card, e);
-                if (why != null) lines.Add(why);
-            }
             if (e.GetZone() == TAG_ZONE.SECRET)
             {
                 string banner = null;

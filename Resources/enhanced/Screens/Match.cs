@@ -510,6 +510,7 @@ namespace HSAEnhanced
             return Bind.READ_NEXT_LINE.Pressed || Bind.READ_PREV_LINE.Pressed || Bind.READ_CUR_LINE.Pressed || Bind.READ_TO_END.Pressed || Bind.READ_ORIGINAL_CARD_STATS.Pressed;
         }
 
+        // F1, as Hearthstone Access (docs/combat-spec-1-navigation-reading.md section 5)
         internal override string Help()
         {
             var gs = GS;
@@ -522,13 +523,94 @@ namespace HSAEnhanced
                     Keys.Up.Name, Keys.Down.Name, Bind.ASSEMBLE_SELECT_TOP.Name, Bind.ASSEMBLE_SELECT_BOTTOM.Name,
                     Bind.ASSEMBLE_VIEW_TARGET.Name, Keys.Enter.Name);
             }
-            if (m_mode == Mode.Choices && RewindUIManager.IsShowingRewindUI) return Speech.S("ACCESSIBILITY_GAMEPLAY_REWIND_MODE_HELP", Bind.REWIND.Name, Bind.REWIND_KEEP.Name);
+            var end = EndGameScreen.Get();
+            if (end != null && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy) return Speech.S(K.PRESS_KEY_TO_CONTINUE, Keys.Enter.Name);
+            if (gs.IsGameOver()) return Speech.S(K.GAMEPLAY_GAME_OVER_GENERIC);
+            if (!gs.IsGameCreated() || gs.IsMulliganPhasePending()) return Speech.S(K.GAMEPLAY_MULLIGAN_HELP_WAITING_FOR_GAME_TO_START);
             if (m_mode == Mode.Mulligan) return Speech.S(K.GAMEPLAY_MULLIGAN_HELP, Keys.Space.Name, Keys.Enter.Name);
-            if (m_confirmEndTurn) return Speech.S(K.GAMEPLAY_CONFIRM_END_TURN_HELP, Keys.Enter.Name, Bind.END_TURN.Name);
+            if (gs.IsMulliganManagerActive()) return Speech.S(K.GAMEPLAY_WAITING_FOR_OPPONENT);
             if (m_mode == Mode.DeckAction || m_mode == Mode.Reverse) return Speech.S(K.TUTORIAL_HOGGER_2_5, Keys.Enter.Name, Keys.Back.Name);
-            if (gs.IsInTargetMode()) return Speech.S(K.GAMEPLAY_CHOOSE_TARGET_HELP, Keys.Tab.Name, Keys.Enter.Name, Keys.Back.Name);
-            if (gs.IsGameOver()) return Speech.S(K.PRESS_KEY_TO_CONTINUE, Keys.Enter.Name);
+            if (m_confirmEndTurn) return Speech.S(K.GAMEPLAY_CONFIRM_END_TURN_HELP, Keys.Enter.Name, Bind.END_TURN.Name);
+            if (m_mode == Mode.Place)
+                return m_placing != null && m_placing.IsLocation() ? Speech.S(K.GAMEPLAY_POSITION_LOCATION_HELP, Keys.Enter.Name) : Speech.S(K.GAMEPLAY_SUMMON_MINION_HELP, Keys.Enter.Name);
+            bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET || gs.GetResponseMode() == GameState.ResponseMode.OPTION_REVERSE_TARGET;
+            if (m_mode == Mode.Playing && !target) return Speech.S(K.GAMEPLAY_PLAY_CARD_HELP, Keys.Enter.Name);
+            if (!gs.IsFriendlySidePlayerTurn()) return Speech.S(K.GAMEPLAY_OPPONENT_TURN);
+            if (m_mode == Mode.Choices && RewindUIManager.IsShowingRewindUI) return Speech.S("ACCESSIBILITY_GAMEPLAY_REWIND_MODE_HELP", Bind.REWIND.Name, Bind.REWIND_KEEP.Name);
+            if (m_mode == Mode.Choices) return Speech.S(K.GAMEPLAY_CHOICE_MODE_HELP, Keys.Enter.Name, Keys.Tab.Name);
+            if (gs.IsInChoiceMode()) return Speech.S(K.GAMEPLAY_HIDDEN_CHOICE_HELP, Keys.Tab.Name);
+            if (target) return Speech.S(K.GAMEPLAY_CHOOSE_TARGET_HELP, Keys.Tab.Name, Keys.Enter.Name, Keys.Back.Name);
+            if (gs.IsInMainOptionMode()) return MainHelp(gs);
             return "";
+        }
+
+        // your turn, nothing held: what the focused card allows, then every key to look around
+        string MainHelp(GameState gs)
+        {
+            var lines = new List<string>();
+            var button = EndTurnButton.Get();
+            bool noPlays = button != null && button.HasNoMorePlays();
+            var me = gs.GetFriendlySidePlayer();
+            var them = gs.GetOpposingSidePlayer();
+            bool tutorial = gs.GetGameEntity() is TutorialEntity;
+            string mana = Speech.S(K.GAMEPLAY_READ_PLAYER_MANA_HELP, Bind.SEE_PLAYER_MANA.Name);
+            bool manaFirst = false;
+            if (noPlays) lines.Add(Speech.S(K.GAMEPLAY_END_TURN_HELP, Bind.END_TURN.Name));
+            var card = Combat.FocusedCard;
+            var e = card == null ? null : card.GetEntity();
+            if (e != null)
+            {
+                lines.Add(Speech.S(K.GAMEPLAY_READ_CARD_HELP));
+                if (TooltipsShown()) lines.Add(Speech.S(K.GAMEPLAY_READ_CARD_TOOLTIP_HELP, Bind.READ_TOOLTIP.Name));
+                bool valid = false;
+                try { valid = gs.IsValidOption(e); } catch { }
+                bool mine = e.IsControlledByFriendlySidePlayer();
+                if (valid && e.GetZone() == TAG_ZONE.HAND)
+                {
+                    lines.Add(Speech.S(K.GAMEPLAY_PLAY_CARD_HELP, Keys.Enter.Name));
+                    if (e.IsForgeable()) lines.Add(Speech.S(K.GAMEPLAY_FORGE_CARD_HELP, Bind.PERFORM_DECK_ACTION.Name));
+                    else if (e.IsPrepareable()) lines.Add(Speech.S(K.GAMEPLAY_PREPARE_CARD_HELP, Bind.PERFORM_DECK_ACTION.Name));
+                    else if (e.IsTradeable()) lines.Add(Speech.S(K.GAMEPLAY_TRADE_CARD_HELP, Bind.PERFORM_DECK_ACTION.Name));
+                }
+                else if (valid && mine && e.IsMinion() && e.GetZone() == TAG_ZONE.PLAY) lines.Add(Speech.S(K.GAMEPLAY_ATTACK_WITH_MINION_HELP, Keys.Enter.Name));
+                else if (valid && mine && e.IsHero()) lines.Add(Speech.S(K.GAMEPLAY_ATTACK_WITH_HERO_HELP, Keys.Enter.Name));
+                else if (valid && mine && e.IsHeroPower()) lines.Add(Speech.S(K.GAMEPLAY_USE_HERO_POWER_HELP, Keys.Enter.Name));
+                else if (!valid && mine && e.GetZone() == TAG_ZONE.HAND) { lines.Add(mana); manaFirst = true; }
+            }
+            if (!noPlays && e == null) lines.Add(Speech.S(K.GAMEPLAY_SEE_VALID_OPTIONS, Bind.READ_NEXT_VALID_ITEM.Name));
+            if (me != null && me.GetHandZone() != null && me.GetHandZone().GetCardCount() > 0) lines.Add(Speech.S(K.GAMEPLAY_SEE_PLAYER_HAND_HELP, Bind.SEE_PLAYER_HAND.Name));
+            if (me != null && me.GetBattlefieldZone() != null && me.GetBattlefieldZone().GetCardCount() > 0) lines.Add(Speech.S(K.GAMEPLAY_SEE_PLAYER_MINIONS_HELP, Bind.SEE_PLAYER_MINIONS.Name));
+            if (me != null && me.GetSecretZone() != null && me.GetSecretZone().GetCardCount() > 0) lines.Add(Speech.S(K.GAMEPLAY_SEE_PLAYER_SECRETS_HELP, Bind.SEE_PLAYER_SECRETS.Name));
+            lines.Add(Speech.S(K.GAMEPLAY_SEE_PLAYER_HERO_HELP, Bind.SEE_PLAYER_HERO.Name));
+            if (me != null && me.GetHeroPower() != null) lines.Add(Speech.S(K.GAMEPLAY_READ_PLAYER_HERO_POWER_HELP, Bind.SEE_PLAYER_HERO_POWER.Name));
+            if (them != null && them.GetHeroPower() != null) lines.Add(Speech.S(K.GAMEPLAY_READ_OPPONENT_HERO_POWER_HELP, Bind.SEE_OPPONENT_HERO_POWER.Name));
+            lines.Add(Speech.S(K.GAMEPLAY_SEE_OPPONENT_HERO_HELP, Bind.SEE_OPPONENT_HERO.Name));
+            if (them != null && them.GetBattlefieldZone() != null && them.GetBattlefieldZone().GetCardCount() > 0) lines.Add(Speech.S(K.GAMEPLAY_SEE_OPPONENT_MINIONS_HELP, Bind.SEE_OPPONENT_MINIONS.Name));
+            if (!tutorial)
+            {
+                lines.Add(Speech.S(K.GAMEPLAY_COUNT_PLAYER_DECK_HELP, Bind.SEE_PLAYER_DECK.Name));
+                lines.Add(Speech.S(K.GAMEPLAY_COUNT_OPPONENT_DECK_HELP, Bind.SEE_OPPONENT_DECK.Name));
+                lines.Add(Speech.S(K.GAMEPLAY_COUNT_OPPONENT_HAND_HELP, Bind.SEE_OPPONENT_HAND.Name));
+                lines.Add(Speech.S(K.GAMEPLAY_COUNT_OPPONENT_SECRETS_HELP, Bind.SEE_OPPONENT_SECRETS.Name));
+            }
+            if (!manaFirst) lines.Add(mana);
+            if (!tutorial)
+            {
+                lines.Add(Speech.S(K.GAMEPLAY_READ_OPPONENT_MANA_HELP, Bind.SEE_OPPONENT_MANA.Name));
+                lines.Add(Speech.S(K.GAMEPLAY_OPEN_HISTORY_LOG_HELP, Bind.SEE_HISTORY.Name));
+            }
+            return string.Join(" ", lines);
+        }
+
+        // the game's keyword panels are up (the mouse is on a card that has some)
+        static bool TooltipsShown()
+        {
+            try
+            {
+                var panels = Ref.Get(TooltipPanelManager.Get(), "m_tooltipPanels") as System.Collections.ICollection;
+                return panels != null && panels.Count > 0;
+            }
+            catch { return false; }
         }
 
         internal override void Read() { }
