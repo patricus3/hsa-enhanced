@@ -419,6 +419,15 @@ namespace HSAEnhanced
             if (m_mode == Mode.Place) return PlaceKeys();
             if (m_mode == Mode.Playing && !gs.IsInTargetMode()) return PlayKeys();
 
+            // E in the opponent's turn (also right after yours ended, while the game still finishes it):
+            // "Opponent's turn", never the end-turn question
+            if ((Bind.END_TURN.Pressed || Bind.FORCE_END_TURN.Pressed) && OpponentsTurn(gs))
+            {
+                m_confirmEndTurn = false;
+                Say(Speech.S(K.GAMEPLAY_OPPONENT_TURN));
+                return true;
+            }
+
             // the end-turn question: Enter or E ends the turn, any other key cancels it (and does nothing else)
             if (m_confirmEndTurn)
             {
@@ -476,8 +485,6 @@ namespace HSAEnhanced
 
             if (!gs.IsInMainOptionMode()) return false;
             if (Keys.Enter.Pressed) { if (card != null) Act(card); return true; }
-            // ending the turn: only your own (in the opponent's the game takes emotes and the like, not this)
-            if ((Bind.FORCE_END_TURN.Pressed || Bind.END_TURN.Pressed) && !gs.IsFriendlySidePlayerTurn()) return true;
             if (Bind.FORCE_END_TURN.Pressed) { EndTurn(); return true; }
             if (Bind.END_TURN.Pressed) { AskEndTurn(); return true; }
             if (Bind.SEND_MINION_TO_FACE.Pressed) { MinionToFace(card); return true; }
@@ -1167,6 +1174,14 @@ namespace HSAEnhanced
             else if (power != null && gs.HasResponse(power)) key = K.GAMEPLAY_QUERY_END_TURN_WHEN_CAN_USE_HERO_POWER;
             m_confirmEndTurn = true;
             Say(Speech.S(key));
+        }
+
+        // the opponent's turn, or yours already ended (the button waits for the opponent)
+        static bool OpponentsTurn(GameState gs)
+        {
+            if (!gs.IsFriendlySidePlayerTurn()) return true;
+            var button = EndTurnButton.Get();
+            try { return button != null && button.IsInWaitingState(); } catch { return false; }
         }
 
         void EndTurn()
