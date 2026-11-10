@@ -69,6 +69,7 @@ namespace HSAEnhanced
         int m_line;
         bool m_confirmEndTurn;
         GameState.ResponseMode? m_lastResponse;
+        int m_targetChoice;
         bool m_mulliganSeen, m_gameOverSaid, m_choicesShown;
         object m_choiceKey;
         AssembleUIManager m_assembleManager;
@@ -154,7 +155,7 @@ namespace HSAEnhanced
                 m_choicesShown = false;
                 m_choiceKey = null;
                 if (m_mode == Mode.Choices) m_mode = Mode.Browse;
-                if (gs.IsInChoiceMode() && !gs.IsInSubOptionMode()) Say(Speech.S(K.GAMEPLAY_CHOICES_HIDDEN));
+                if (gs.IsInChoiceMode() && !gs.IsInSubOptionMode() && !Combat.ChoosingTarget(gs)) Say(Speech.S(K.GAMEPLAY_CHOICES_HIDDEN));
             }
 
             // a target to choose (an attack, a battlecry, a spell)
@@ -164,6 +165,17 @@ namespace HSAEnhanced
                 if ((response == GameState.ResponseMode.OPTION_TARGET || response == GameState.ResponseMode.OPTION_REVERSE_TARGET) && m_mode != Mode.Choices)
                     Say(Speech.S(K.GAMEPLAY_CHOOSE_TARGET));
                 m_lastResponse = response;
+            }
+            // a target the server asks for as a choice (C'Thun's Glare...): the mode stays CHOICE
+            int targetChoice = Combat.ChoosingTarget(gs) ? gs.GetFriendlyEntityChoices().ID : 0;
+            if (targetChoice != m_targetChoice)
+            {
+                m_targetChoice = targetChoice;
+                if (targetChoice != 0)
+                {
+                    Log.Info("match: target choice " + targetChoice);
+                    Say(Speech.S(K.GAMEPLAY_CHOOSE_TARGET));
+                }
             }
             if (m_mode == Mode.Place && (m_placing == null || !gs.IsInMainOptionMode() || m_placing.GetZone() != TAG_ZONE.HAND)) m_mode = Mode.Browse;
             if (m_confirmEndTurn && !gs.IsInMainOptionMode()) m_confirmEndTurn = false;
@@ -221,7 +233,8 @@ namespace HSAEnhanced
                 return true;
             }
 
-            bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET;
+            bool choiceTarget = Combat.ChoosingTarget(gs);
+            bool target = gs.IsInTargetMode() || gs.GetResponseMode() == GameState.ResponseMode.OPTION_TARGET || choiceTarget;
             // the shared combat handlers were written as Hearthstone Access hooks ("true": skip HSA's
             // handler), so they claim every key: each gets only the keys it handles
             if (ZoneKey() && Combat.ZoneKeys(this, target && !gs.CanTargetCardsInHand())) return true;
@@ -233,7 +246,7 @@ namespace HSAEnhanced
             if (target || gs.IsInSubOptionMode())
             {
                 if (Keys.Enter.Pressed) { Combat.ConfirmTarget(this, true); return true; }
-                if (Keys.Back.Pressed) { Cancel(); return true; }
+                if (Keys.Back.Pressed) { if (!choiceTarget) Cancel(); return true; }      // a choice cannot be backed out of
                 return false;
             }
             if (Keys.Back.Pressed && gs.IsInChoiceMode()) return true;      // a choice cannot be backed out of
@@ -290,7 +303,7 @@ namespace HSAEnhanced
             if (m_mode == Mode.Choices && RewindUIManager.IsShowingRewindUI) return Speech.S("ACCESSIBILITY_GAMEPLAY_REWIND_MODE_HELP", Bind.REWIND.Name, Bind.REWIND_KEEP.Name);
             if (m_mode == Mode.Mulligan) return Speech.S(K.GAMEPLAY_MULLIGAN_HELP, Keys.Space.Name, Keys.Enter.Name);
             if (m_confirmEndTurn) return Speech.S(K.GAMEPLAY_CONFIRM_END_TURN_HELP, Keys.Enter.Name, Bind.END_TURN.Name);
-            if (gs.IsInTargetMode()) return Speech.S(K.GAMEPLAY_CHOOSE_TARGET_HELP, Keys.Tab.Name, Keys.Enter.Name, Keys.Back.Name);
+            if (gs.IsInTargetMode() || Combat.ChoosingTarget(gs)) return Speech.S(K.GAMEPLAY_CHOOSE_TARGET_HELP, Keys.Tab.Name, Keys.Enter.Name, Keys.Back.Name);
             if (gs.IsGameOver()) return Speech.S(K.PRESS_KEY_TO_CONTINUE, Keys.Enter.Name);
             return "";
         }

@@ -221,6 +221,16 @@ namespace HSAEnhanced
             items.Add(new GameButton { Target = reward, Way = true, Label = Str.Word("GLOBAL_CONTINUE"), Click = () =>
             {
                 Log.Info("rewards: continue past " + r.name);
+                // after a match the end screen shows the reward and listens for its own continue
+                // click (the reward's catcher has no listener there): click the end screen instead
+                var end = EndGameScreen.Get();
+                if (end != null && Ref.Get<Reward>(end, "m_currentlyShowingReward") == r
+                    && end.m_hitbox != null && end.m_hitbox.gameObject.activeInHierarchy)
+                {
+                    Log.Info("rewards: continue the end screen");
+                    Core.Click.Peg(end.m_hitbox);
+                    return;
+                }
                 // Reward's click catcher forwards RELEASE to this listener dispatcher.
                 // Calling the dispatcher directly avoids a no-op when the catcher exists
                 // but is not accepting Peg input (seen on earned card-back rewards).

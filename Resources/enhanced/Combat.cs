@@ -250,6 +250,18 @@ namespace HSAEnhanced
             return true;
         }
 
+        // A choice the server asks for on the board (C'Thun's Glare, Y'Shaarj's Gaze...): a target, picked
+        // like one, but answered as a choice and not cancellable; no cards are shown for it
+        internal static bool ChoosingTarget(GameState gs)
+        {
+            try
+            {
+                var choices = gs == null || !gs.IsInChoiceMode() ? null : gs.GetFriendlyEntityChoices();
+                return choices != null && choices.ChoiceType == CHOICE_TYPE.TARGET;
+            }
+            catch { return false; }
+        }
+
         static bool IsValid(GameState gs, Entity e)
         {
             if (e == null) return false;
@@ -319,7 +331,7 @@ namespace HSAEnhanced
             if (s_card == null) return true;
             var e = s_card.GetEntity();
             var gs = GameState.Get();
-            if (e == null || !gs.IsValidOptionTarget(e, false)) { Say(gameplay, Str.Join(e == null ? null : Str.Clean(e.GetName()), Str.Unavailable)); return true; }
+            if (e == null || !(ChoosingTarget(gs) ? gs.IsChoosableEntity(e) : gs.IsValidOptionTarget(e, false))) { Say(gameplay, Str.Join(e == null ? null : Str.Clean(e.GetName()), Str.Unavailable)); return true; }
             WhenReady(gameplay, e, () =>
             {
                 Log.Info("combat: target " + e.GetName());
