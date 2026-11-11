@@ -122,6 +122,10 @@ namespace HSAEnhanced
                 var go = latest == null ? null : latest.PopupInstance;
                 if (go != null && go.activeInHierarchy && !Claimed(go)) return go;
             }
+            // a reward scroll (a quest's reward: event loot, a track level...) is a UIContext popup
+            // only outside a match; on the end screen it is just an overlay
+            foreach (var scroll in UnityEngine.Object.FindObjectsByType<Hearthstone.Progression.RewardScroll>(FindObjectsSortMode.None))
+                if (scroll != null && scroll.gameObject.activeInHierarchy && !Claimed(scroll.gameObject)) return scroll.gameObject;
             return null;
         }
 
