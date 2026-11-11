@@ -84,6 +84,7 @@ namespace HSAEnhanced.Core
                 "Strzałki w górę i w dół poruszają po liście, {0} wybiera. {1} i {2} przewracają strony księgi. {3} wraca do spisu rozdziałów." } },
             { "HSA_ENHANCED_ADVENTURE_CHAPTERS", new[] { "Chapters", "Rozdziały" } },
             { "HSA_ENHANCED_ADVENTURE_NO_MORE_PAGES", new[] { "No more pages", "Nie ma więcej stron" } },
+            { "HSA_ENHANCED_N_OF_M", new[] { "{0} of {1}", "{0} z {1}" } },
             { "HSA_ENHANCED_SHOP_QUANTITY", new[] { "Quantity: {0}", "Ilość: {0}" } },
             { "HSA_ENHANCED_SHOP_QUANTITY_PROMPT", new[] {
                 "Quantity, from {0} to {1}. Type a number, Enter confirms, Escape cancels",

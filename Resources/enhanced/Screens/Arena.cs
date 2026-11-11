@@ -131,7 +131,7 @@ namespace HSAEnhanced
             if (run && DM.CanShowWinsLosses)
             {
                 bool ug = DM.IsUnderground();
-                var line = Str.Join(Str.Word("GLUE_WINS"), DM.GetCurrentWins(ug) + "/" + DM.GetMaxWins(ug), Str.Word("GLUE_LOSSES"), DM.GetCurrentLosses(ug) + "/" + DM.GetMaxLosses(ug));
+                var line = Str.Join(Str.Words(Str.Word("GLUE_WINS"), Str.Of(DM.GetCurrentWins(ug), DM.GetMaxWins(ug))), Str.Words(Str.Word("GLUE_LOSSES"), Str.Of(DM.GetCurrentLosses(ug), DM.GetMaxLosses(ug))));
                 Add(items, anchor, line, null);
                 var deck = DM.GetDraftDeck();
                 if (deck != null && !string.IsNullOrEmpty(deck.HeroCardID)) Add(items, anchor, Card(deck.HeroCardID), null);
@@ -149,7 +149,7 @@ namespace HSAEnhanced
             {
                 // start: spends tickets (1, the Underground 2), so Enter twice
                 int cost = DM.IsUnderground() ? 2 : 1;
-                var label = Str.Join(Str.Word("GLOBAL_PLAY"), Str.Game("GLUE_ARENA_TICKET_COUNT", cost) ?? cost.ToString());
+                var label = Str.Words(Str.Word("GLOBAL_PLAY"), Str.Game("GLUE_ARENA_TICKET_COUNT", cost) ?? cost.ToString());
                 Add(items, anchor, label, () =>
                 {
                     if (Time.unscaledTime > m_armedUntil)
@@ -191,7 +191,7 @@ namespace HSAEnhanced
             string phase = slot == DraftSlotType.DRAFT_SLOT_HERO ? Str.Word("GLUE_ARENA_PHASE_HERO")
                          : slot == DraftSlotType.DRAFT_SLOT_HERO_POWER ? Str.Word("GLUE_ARENA_PHASE_HERO_POWER")
                          : redraft ? Str.Game("GLUE_ARENA_DRAFT_REDRAFT_DETAIL", DM.GetRedraftSlot() + 1, DM.GetMaxRedraftSlot() + 1)
-                         : Str.Join(Str.Word("GLUE_ARENA_PHASE_DRAFT"), (DM.GetSlot()) + "/" + (DM.GetMaxSlot()));
+                         : Str.Words(Str.Word("GLUE_ARENA_PHASE_DRAFT"), Str.Of(DM.GetSlot(), DM.GetMaxSlot()));
             key = "draft:" + slot + ":" + (redraft ? DM.GetRedraftSlot() : DM.GetSlot());
             title = Str.Join(ModeName(), phase);
             var anchor = (Component)display;
@@ -300,7 +300,7 @@ namespace HSAEnhanced
             int count = Ref.Get<int>(display, "m_deckCount"), max = Ref.Get<int>(display, "m_maxDeckCount");
             if (max <= 0) { count = deck.GetTotalCardCount(); max = deck.GetMaxCardCount(); }
             key = "edit:" + DM.IsUnderground();
-            title = Str.Join(ModeName(), Str.Word("GLUE_EDIT_DECK"), Str.Game("GLUE_DECK_TRAY_COUNT", count, max) ?? count + "/" + max);
+            title = Str.Join(ModeName(), Str.Word("GLUE_EDIT_DECK"), Str.Game("GLUE_DECK_TRAY_COUNT", count, max) ?? Str.Of(count, max));
             var anchor = (Component)display;
             foreach (var s in deck.GetSlots())
             {
@@ -309,7 +309,7 @@ namespace HSAEnhanced
                 var id = s.CardID;
                 var premium = s.PreferredPremium;
                 bool fixedCard = def.HasTag(GAME_TAG.CAN_NOT_BE_REDRAFTED);
-                var label = Str.Join(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null, def.GetCost().ToString(),
+                var label = Str.Join(Str.Words(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null), def.GetCost().ToString(),
                     DM.IsRedraftCard(id, premium) ? Str.Word("GLUE_COLLECTION_CARD_NEW") : null,
                     GameUtils.IsBannedByArenaDenylist(id) ? Str.Unavailable : null, fixedCard ? Str.Locked : null);
                 Add(items, anchor, label, () =>
@@ -360,11 +360,11 @@ namespace HSAEnhanced
                 var def = DefLoader.Get().GetEntityDef(s.CardID);
                 if (def == null) continue;
                 curve[Math.Max(0, Math.Min(7, def.GetCost()))] += s.Count;
-                var line = Str.Join(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null, def.GetCost().ToString());
+                var line = Str.Join(Str.Words(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null), def.GetCost().ToString());
                 lines.Add(line);
                 cards.Add(line);
             }
-            var deckTitle = Str.Join(Str.Word("GLUE_ARENA_DECK_TITLE"), deck.GetTotalCardCount().ToString());
+            var deckTitle = Str.Words(Str.Word("GLUE_ARENA_DECK_TITLE"), deck.GetTotalCardCount().ToString());
             Add(items, anchor, row ? deckTitle : Str.Join(deckTitle, string.Join("; ", lines.ToArray())), null);
             if (row) items[items.Count - 1].Lines = cards;
             var bars = new List<string>();

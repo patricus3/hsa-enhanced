@@ -187,7 +187,7 @@ namespace HSAEnhanced
                 var medal = RankMgr.Get().GetLocalPlayerMedalInfo().GetCurrentMedal(Options.GetFormatType());
                 if (medal == null || !medal.IsValid()) return null;
                 var name = Str.Clean(medal.GetRankName());
-                if (medal.IsLegendRank() && medal.legendIndex > 0) name = Str.Join(name, medal.legendIndex.ToString());
+                if (medal.IsLegendRank() && medal.legendIndex > 0) name = Str.Words(name, medal.legendIndex.ToString());
                 return name.Length == 0 ? null : name;
             }
             catch (Exception e) { Log.Error(e); return null; }

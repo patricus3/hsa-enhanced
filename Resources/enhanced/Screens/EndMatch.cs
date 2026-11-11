@@ -120,7 +120,7 @@ namespace HSAEnhanced
         static string RankText(TranslatedMedalInfo info)
         {
             var name = Str.Clean(info.GetRankName());
-            return info.IsLegendRank() ? Str.Join(name, info.legendIndex.ToString()) : name;
+            return info.IsLegendRank() ? Str.Words(name, info.legendIndex.ToString()) : name;
         }
 
         // the rank: where you are now, then what changed
@@ -277,7 +277,7 @@ namespace HSAEnhanced
             }
             if (lines.Count == 0) return;
             // where the track stands now
-            lines.Add(Str.Join(Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", model.Level), model.XpNeeded > 0 ? model.Xp + "/" + model.XpNeeded : null));
+            lines.Add(Str.Join(Str.Game("GLUE_PROGRESSION_REWARD_TRACK_POPUP_COMPLETE_LEVEL", model.Level), model.XpNeeded > 0 ? Speech.S("ACCESSIBILITY_UI_REWARDS_TRACK_XP_PROGRESS", model.Xp, model.XpNeeded) : null));
             EndMatch.Tell(key, lines, "xp");
         }
     }

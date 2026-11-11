@@ -372,7 +372,7 @@ namespace HSAEnhanced
             Func<string> price = () =>
             {
                 var i = Item;
-                return i == null || i.TotalPrice == null ? "" : Str.Join(Str.Word("GLUE_STORE_SUMMARY_PRICE_HEADLINE"), AccessibleBlackMarket.Price(i.TotalPrice.Amount));
+                return i == null || i.TotalPrice == null ? "" : Str.Words(Str.Word("GLUE_STORE_SUMMARY_PRICE_HEADLINE"), AccessibleBlackMarket.Price(i.TotalPrice.Amount));
             };
             m_menu.AddOption(price, () => Output(price()));
             var stock = AccessibleBlackMarket.Stock(item);
@@ -381,7 +381,7 @@ namespace HSAEnhanced
             // quantity, when more than one can be bought
             if (item.ItemStock != 1)
             {
-                Func<string> qty = () => Str.Join(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
+                Func<string> qty = () => Str.Words(Str.Word("GLUE_STORE_QUANTITY_HEADLINE"), (Item == null ? 0 : Item.PurchaseQuantity).ToString());
                 m_menu.AddOption(qty, () => Output(qty()));
                 // "+1" is the game's text for such a button; a bare "-" is silent in screen readers
                 var plus = Str.Word("GLUE_BATTLEBASH_PURCHASE_PLUS1");
@@ -390,7 +390,7 @@ namespace HSAEnhanced
             }
 
             if (item.ItemStock != 0 && !item.IsLocked)
-                m_menu.AddOption(Str.Join(Str.Word("GLOBAL_BUTTON_BUY", "GLUE_STORE_BUY_TEXT"), AccessibleBlackMarket.Price(item.TotalPrice == null ? 0 : item.TotalPrice.Amount)),
+                m_menu.AddOption(Str.Words(Str.Word("GLOBAL_BUTTON_BUY", "GLUE_STORE_BUY_TEXT"), AccessibleBlackMarket.Price(item.TotalPrice == null ? 0 : item.TotalPrice.Amount)),
                     () => Send("PRODUCTBUYBUTTON_CLICKED"));
 
             // haggling is offered during the grace period, once per item

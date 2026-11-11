@@ -592,6 +592,20 @@ namespace HSAEnhanced
 
         internal static float ScreenOrderOf(Component c) { return ScreenOrder(c); }
 
+        // a bare amount on a reward's gold bag or dust jar (reward scrolls): the picture says what
+        // it is, so the words do: "25" becomes "25 Gold"
+        static string Currency(Component text, string s)
+        {
+            int amount;
+            if (!int.TryParse((s ?? "").Trim(), out amount)) return s;
+            for (var t = text.transform; t != null; t = t.parent)
+            {
+                if (t.name.StartsWith("GoldBagDisplay")) return Str.Words(s, Str.Word(Core.K.UI_REWARD_TYPE_GOLD));
+                if (t.name.StartsWith("DustJarDisplay")) return Str.Words(s, Str.Word(Core.K.UI_REWARD_TYPE_ARCANE_DUST));
+            }
+            return s;
+        }
+
         // (text object, text) for each text shown under `root` that is not on a button, in reading order
         internal static List<KeyValuePair<Component, string>> TextsUnder(GameObject root)
         {
@@ -604,7 +618,7 @@ namespace HSAEnhanced
                 if (ut.GetComponentInParent<PegUIElement>() != null || ut.GetComponentInParent<Clickable>() != null) continue;
                 var s = ShownText(ut.Text);
                 if (!HasWords(s) || !seen.Add(s)) continue;
-                found.Add(new KeyValuePair<Component, string>(ut, s));
+                found.Add(new KeyValuePair<Component, string>(ut, Currency(ut, s)));
             }
             var keyed = new List<KeyValuePair<float, int>>();
             for (int i = 0; i < found.Count; i++) keyed.Add(new KeyValuePair<float, int>(ScreenOrder(found[i].Key), i));

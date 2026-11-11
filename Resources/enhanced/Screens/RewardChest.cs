@@ -168,7 +168,7 @@ namespace HSAEnhanced
             {
                 var p = packages[i];
                 int n = p.m_RewardIndex + 1;
-                items.Add(new GameButton { Target = p, Label = Str.Join(A("UI_REWARD_TYPE_REWARD_PACKAGE"), n.ToString()), Click = () =>
+                items.Add(new GameButton { Target = p, Label = Str.Words(A("UI_REWARD_TYPE_REWARD_PACKAGE"), n.ToString()), Click = () =>
                 {
                     Log.Info("rewards: open box " + p.m_RewardIndex);
                     Core.Click.Peg(p);

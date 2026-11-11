@@ -208,7 +208,7 @@ namespace HSAEnhanced
             if (model != null && model.NumPacksAvailable > 0)
             {
                 var widget = village.GetComponent<Widget>();
-                Item(items, village, Str.Join(Str.Word("GLUE_OPEN_PACKS"), model.NumPacksAvailable.ToString()),
+                Item(items, village, Str.Words(Str.Word("GLUE_OPEN_PACKS"), model.NumPacksAvailable.ToString()),
                      () => { if (widget != null) widget.TriggerEvent("PACK_BUTTON_CLICKED"); });
             }
             BackItem(items, village);
@@ -321,7 +321,7 @@ namespace HSAEnhanced
             long gold = 0;
             CurrencyManager currencies = null;
             if (Blizzard.T5.Services.ServiceManager.TryGet<CurrencyManager>(out currencies) && currencies != null) gold = currencies.GetBalance(CurrencyType.GOLD);
-            Info(items, workshop, Str.Join(Str.Word("GLUE_SHOP_GOLD"), gold.ToString()));
+            Info(items, workshop, Str.Words(Str.Word("GLUE_SHOP_GOLD"), gold.ToString()));
             foreach (var state in states)
             {
                 var item = Ref.Invoke(workshop, "MakeWorkshopItemDataModel", state, gold) as MercenaryVillageWorkshopItemDataModel;
@@ -329,11 +329,11 @@ namespace HSAEnhanced
                 string status;
                 bool canDo = false;
                 if (item.IsFullyUpgraded) status = Str.Word("GLUE_LETTUCE_VILLAGE_WORKSHOP_FULLY_UPGRADED");
-                else if (!item.IsAchievementCompleted) status = Str.Join(Str.Locked, Str.Clean(item.AchievementDescription), item.Progress + "/" + item.Quota);
+                else if (!item.IsAchievementCompleted) status = Str.Join(Str.Locked, Str.Clean(item.AchievementDescription), Str.Of(item.Progress, item.Quota));
                 else
                 {
                     var action = Str.Word(item.IsNewBuilding ? "GLUE_LETTUCE_VILLAGE_WORKSHOP_BUILD" : "GLUE_LETTUCE_VILLAGE_WORKSHOP_UPGRADE");
-                    var price = item.Price == null ? null : Str.Join(item.Price.DisplayText, Str.Word("GLUE_SHOP_GOLD"));
+                    var price = item.Price == null ? null : Str.Words(item.Price.DisplayText, Str.Word("GLUE_SHOP_GOLD"));
                     canDo = item.CanAffordUpgrade;
                     status = Str.Join(action, price, canDo ? null : Str.Unavailable);
                 }
@@ -501,7 +501,7 @@ namespace HSAEnhanced
                 Info(items, map, Str.Join(Str.Word("GLUE_LETTUCE_MAP_TEAM_TRAY_HEADER"), string.Join("; ", mercs.ToArray())));
                 break;
             }
-            if (dm != null) Info(items, map, Str.Join(Str.Word("GLUE_LETTUCE_MAP_STATS_CURRENT_TURNS_LABEL"), dm.CurrentTurns.ToString(), Str.Word("GLUE_LETTUCE_MAP_STATS_BEST_TURNS_LABEL"), dm.FewestTurns.ToString()));
+            if (dm != null) Info(items, map, Str.Join(Str.Words(Str.Word("GLUE_LETTUCE_MAP_STATS_CURRENT_TURNS_LABEL"), dm.CurrentTurns.ToString()), Str.Words(Str.Word("GLUE_LETTUCE_MAP_STATS_BEST_TURNS_LABEL"), dm.FewestTurns.ToString())));
             if (dm == null || !dm.RunEnded)
                 Item(items, map, Str.Word("GLUE_LETTUCE_MAP_RETIRE_DIALOG_CONFIRM"), () => { Log.Info("mercenaries: retire"); Ref.Invoke(display, "OnRetireButtonRelease", new object[] { null }); });
             // the whole map, the final boss row first (as it is shown, top to bottom)

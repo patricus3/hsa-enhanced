@@ -114,7 +114,7 @@ namespace HSAEnhanced
 
         internal static string Balances()
         {
-            return Str.Join(Str.Word("GLUE_SHOP_GOLD"), Balance(CurrencyType.GOLD).ToString(), Str.Word("GLUE_SHOP_RUNESTONES"), Balance(Runestones).ToString());
+            return Str.Join(Str.Words(Str.Word("GLUE_SHOP_GOLD"), Balance(CurrencyType.GOLD).ToString()), Str.Words(Str.Word("GLUE_SHOP_RUNESTONES"), Balance(Runestones).ToString()));
         }
 
         bool Level(ref string key, ref string title, List<GameButton> items)
@@ -223,7 +223,7 @@ namespace HSAEnhanced
             if (price == null) return "";
             switch (price.Currency)
             {
-                case CurrencyType.GOLD: return Str.Join(price.DisplayText, Str.Word("GLUE_SHOP_GOLD"));
+                case CurrencyType.GOLD: return Str.Words(price.DisplayText, Str.Word("GLUE_SHOP_GOLD"));
                 case CurrencyType.ROW_RUNESTONES:
                 case CurrencyType.CN_RUNESTONES: return Str.Join(price.DisplayText, Str.Word("GLUE_SHOP_RUNESTONES"));
                 default: return Str.Clean(price.DisplayText);
@@ -277,7 +277,7 @@ namespace HSAEnhanced
                 int max = Math.Max(1, page.Selection == null ? 1 : page.Selection.MaxQuantity);
                 m_quantity = Math.Max(1, Math.Min(m_quantity, max));
                 var head = Str.Word("GLUE_STORE_QUANTITY_HEADLINE");
-                var label = string.IsNullOrEmpty(head) ? Speech.S("HSA_ENHANCED_SHOP_QUANTITY", m_quantity) : Str.Join(head, m_quantity.ToString());
+                var label = string.IsNullOrEmpty(head) ? Speech.S("HSA_ENHANCED_SHOP_QUANTITY", m_quantity) : Str.Words(head, m_quantity.ToString());
                 items.Add(new GameButton { Target = shop, Label = label, Click = () => AskQuantity(page, max) });
             }
             // one option per price

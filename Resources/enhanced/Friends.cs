@@ -93,8 +93,8 @@ namespace HSAEnhanced
                 var medal = medals.GetCurrentMedal(format);
                 if (medal == null || !medal.IsValid()) return null;
                 var name = Str.Clean(medal.GetRankName());
-                if (medal.IsLegendRank() && medal.legendIndex > 0) name = Str.Join(name, medal.legendIndex.ToString());
-                return Str.Join(Str.Word("GLOBAL_" + format.ToString().Replace("FT_", "")), name);
+                if (medal.IsLegendRank() && medal.legendIndex > 0) name = Str.Words(name, medal.legendIndex.ToString());
+                return Str.Words(Str.Word("GLOBAL_" + format.ToString().Replace("FT_", "")), name);
             }
             catch (Exception e) { Log.Error(e); return null; }
         }
@@ -109,7 +109,7 @@ namespace HSAEnhanced
                 var hs = p.GetHearthstoneGameAccount();
                 int rating; PegasusShared.GameType type;
                 if (hs != null && RankMgr.Get().GetBattlegroundsMedalFromRankPresenceField(hs, out rating, out type) && rating > 0)
-                    bg = Str.Join(W("GLOBAL_BATTLEGROUNDS"), rating.ToString());
+                    bg = Str.Words(W("GLOBAL_BATTLEGROUNDS"), rating.ToString());
             }
             catch (Exception e) { Log.Error(e); }
             return Str.Join(ranked, bg);

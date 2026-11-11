@@ -65,7 +65,7 @@ namespace HSAEnhanced
                 {
                     var merc = CollectionManager.Get().GetMercenary(coin.MercenaryId);
                     var name = merc == null ? null : Str.Clean(merc.m_mercShortName ?? merc.m_mercName);
-                    lines.Add(Str.Game("GLUE_LETTUCE_REWARD_MERCENARY_TASK_COINS_REWARD", coin.Quantity, name) ?? Str.Join(coin.Quantity.ToString(), name));
+                    lines.Add(Str.Game("GLUE_LETTUCE_REWARD_MERCENARY_TASK_COINS_REWARD", coin.Quantity, name) ?? Str.Words(coin.Quantity.ToString(), name));
                     return Clean(lines);
                 }
                 // the rest: the game's own text for it (it says UNKNOWN for types it has none for),
@@ -78,7 +78,7 @@ namespace HSAEnhanced
                 {
                     string name = null;
                     try { name = RewardUtils.GetName(item, false); } catch { }
-                    lines.Add(Str.Join(Str.Clean(name), item.Quantity > 1 ? item.Quantity.ToString() : null));
+                    lines.Add(Str.Words(Str.Clean(name), item.Quantity > 1 ? item.Quantity.ToString() : null));
                     lines.Add(Str.Clean(item.StandaloneDescription));
                     if (lines.TrueForAll(l => string.IsNullOrEmpty(l)))
                     {

@@ -72,7 +72,7 @@ namespace HSAEnhanced
         internal static string Describe(MercenaryVillageTaskItemDataModel task)
         {
             var progress = !string.IsNullOrEmpty(task.ProgressMessage) ? Str.Clean(task.ProgressMessage)
-                         : task.ProgressNeeded > 0 ? task.Progress + "/" + task.ProgressNeeded : null;
+                         : task.ProgressNeeded > 0 ? Str.Of(task.Progress, task.ProgressNeeded) : null;
             var rewards = new List<string>();
             if (task.RewardList != null) Mail.Collect(task.RewardList, rewards, 0);
             return Str.Join(Str.Clean(task.MercenaryName), Str.Clean(task.Title), Str.Clean(task.Description), progress,

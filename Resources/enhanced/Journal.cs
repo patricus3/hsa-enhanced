@@ -759,7 +759,7 @@ namespace HSAEnhanced
             var menu = new Core.Menu(this, Str.Clean(string.IsNullOrEmpty(quest.Name) ? quest.Description : quest.Name), back);
             Info(menu, QuestLabel(quest));
             if (quest.Status == QuestManager.QuestStatus.ACTIVE && !quest.IsChainQuest && quest.RerollCount > 0)
-                menu.AddOption(Str.Join(Journal.Word("GLUE_BACON_REROLL"), quest.RerollCount.ToString()), () =>
+                menu.AddOption(Str.Words(Journal.Word("GLUE_BACON_REROLL"), quest.RerollCount.ToString()), () =>
                 {
                     if (!Journal.Online(this)) return;
                     Reroll(quest.QuestId);
@@ -926,7 +926,7 @@ namespace HSAEnhanced
             foreach (var node in nodes) foreach (var tier in Tiers(node)) if (Claimable(track, tier) && (tier.Items == null || !tier.Items.ChooseOne)) ready.Add(tier);
             LogLevels(track, nodes);
             if (ready.Count > 0)
-                menu.AddOption(Str.Join(Str.Word("GLUE_PROGRESSION_REWARD_TRACK_POPUP_SKIN_CHOICE_CTA"), ready.Count.ToString()), () =>
+                menu.AddOption(Str.Words(Str.Word("GLUE_PROGRESSION_REWARD_TRACK_POPUP_SKIN_CHOICE_CTA"), ready.Count.ToString()), () =>
                 {
                     if (!Journal.Online(this)) return;
                     var first = ready[0];
@@ -1058,7 +1058,7 @@ namespace HSAEnhanced
                 if (item == null) continue;
                 string name = null;
                 try { name = RewardUtils.GetName(item, false); } catch { }
-                var label = Str.Join(Str.Clean(name), item.Quantity > 1 ? item.Quantity.ToString() : null, Str.Clean(item.StandaloneDescription));
+                var label = Str.Join(Str.Words(Str.Clean(name), item.Quantity > 1 ? item.Quantity.ToString() : null), Str.Clean(item.StandaloneDescription));
                 if (label.Length == 0) continue;
                 menu.AddOption(label, () => claim(item));
             }
@@ -1102,7 +1102,7 @@ namespace HSAEnhanced
             return Str.Join(Str.Game("GLOBAL_PROGRESSION_POINTS", s.Points) + " / " + s.AvailablePoints,
                 Str.Game("GLOBAL_PROGRESSION_PROGRESS_MESSAGE", s.CompletedAchievements, s.TotalAchievements),
                 Str.Game("GLOBAL_PROGRESSION_ACHIEVEMENT_COMPLETION_PERCENTAGE", s.CompletionPercentage),
-                s.Unclaimed > 0 ? Str.Join(Str.Word("GLUE_PROGRESSION_REWARD_TRACK_POPUP_SKIN_CHOICE_CTA"), s.Unclaimed.ToString()) : null);
+                s.Unclaimed > 0 ? Str.Words(Str.Word("GLUE_PROGRESSION_REWARD_TRACK_POPUP_SKIN_CHOICE_CTA"), s.Unclaimed.ToString()) : null);
         }
 
         void ShowSubcategories(AchievementCategoryDataModel category, int at)

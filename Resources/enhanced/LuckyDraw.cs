@@ -71,7 +71,7 @@ namespace HSAEnhanced
                 Func<string> owned = () =>
                 {
                     var m = Model(m_widget);
-                    return m == null ? "" : Str.Join(Str.Word("GLUE_LUCKY_COLLECTED"), m.OwnedRewardCount + "/" + (m.Rewards == null ? 0 : m.Rewards.Count));
+                    return m == null ? "" : Str.Words(Str.Word("GLUE_LUCKY_COLLECTED"), Str.Of(m.OwnedRewardCount, m.Rewards == null ? 0 : m.Rewards.Count));
                 };
                 m_menu.AddOption(owned, () => Output(owned()));
                 if (!string.IsNullOrEmpty(Str.Clean(dm.TimeLeft)))

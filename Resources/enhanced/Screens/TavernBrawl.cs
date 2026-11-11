@@ -113,9 +113,9 @@ namespace HSAEnhanced
             Add(items, anchor, Text(display.m_chalkboardEndInfo), null);
             if (display.m_numWins != null && display.m_numWins.gameObject.activeInHierarchy)
             {
-                var record = Str.Join(Str.Word("GLUE_WINS"), TBM.GamesWon.ToString());
+                var record = Str.Words(Str.Word("GLUE_WINS"), TBM.GamesWon.ToString());
                 if (TBM.IsCurrentSeasonSessionBased && mission != null)
-                    record = Str.Join(Str.Word("GLUE_WINS"), TBM.GamesWon + "/" + mission.maxWins, Str.Word("GLUE_LOSSES"), TBM.GamesLost + "/" + mission.maxLosses);
+                    record = Str.Join(Str.Words(Str.Word("GLUE_WINS"), Str.Of(TBM.GamesWon, mission.maxWins)), Str.Words(Str.Word("GLUE_LOSSES"), Str.Of(TBM.GamesLost, mission.maxLosses)));
                 Add(items, anchor, record, null);
             }
             if (Shown(display.m_rewardChest)) Add(items, anchor, Text(display.m_rewardsText), null);
@@ -162,9 +162,9 @@ namespace HSAEnhanced
             foreach (var s in deck.GetSlots())
             {
                 var def = s == null ? null : s.GetEntityDef();
-                if (def != null) names.Add(Str.Join(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null));
+                if (def != null) names.Add(Str.Words(Str.Clean(def.GetName()), s.Count > 1 ? "x" + s.Count : null));
             }
-            Add(items, anchor, Str.Join(Str.Clean(deck.Name), deck.GetTotalCardCount().ToString(), string.Join("; ", names.ToArray())), null);
+            Add(items, anchor, Str.Join(Str.Words(Str.Clean(deck.Name), deck.GetTotalCardCount().ToString()), string.Join("; ", names.ToArray())), null);
         }
 
         // ---- the entry of a session brawl ------------------------------------------------------
@@ -196,7 +196,7 @@ namespace HSAEnhanced
         bool Rewards(TavernBrawlDisplay display, HeroicBrawlRewardDisplay heroic, ChestRewardDisplay chest, ref string key, ref string title, List<GameButton> items)
         {
             key = "rewards:" + (heroic != null) + ":" + (chest != null && Shown(chest.m_rewardChest));
-            title = Str.Join(Str.Word("GLOBAL_TAVERN_BRAWL"), Str.Word("GLUE_WINS"), TBM.GamesWon.ToString());
+            title = Str.Join(Str.Word("GLOBAL_TAVERN_BRAWL"), Str.Words(Str.Word("GLUE_WINS"), TBM.GamesWon.ToString()));
             var root = (Component)heroic ?? chest;
             var rewards = new List<string>();
             var list = TBM.CurrentSessionRewards;

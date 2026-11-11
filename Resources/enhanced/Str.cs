@@ -61,6 +61,23 @@ namespace HSAEnhanced
             return text.TrimEnd('.', ':', ' ');
         }
 
+        // parts of one phrase (a label and its value, an amount and its unit, a card and its
+        // copies): spaces, no comma ("Wins 3", "25 Gold", "Fireball x2")
+        internal static string Words(params string[] parts)
+        {
+            var sb = new StringBuilder();
+            foreach (var p in parts)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(p);
+            }
+            return sb.ToString();
+        }
+
+        // a count out of a total, as speech says it: "3 of 12" (a slash gets run together)
+        internal static string Of(object count, object total) { return Core.Speech.S("HSA_ENHANCED_N_OF_M", count, total); }
+
         internal static string Join(params string[] parts)
         {
             var sb = new StringBuilder();

@@ -87,7 +87,7 @@ namespace HSAEnhanced
                 var t = team;
                 var mercs = new List<string>();
                 foreach (var m in team.GetMercs()) if (m != null) mercs.Add(Name(m));
-                var label = Str.Join(Str.Clean(team.Name), mercs.Count + "/" + cm.GetTeamSize(), !team.IsValid() ? Str.Unavailable : null, string.Join(", ", mercs.ToArray()));
+                var label = Str.Join(Str.Clean(team.Name), Str.Of(mercs.Count, cm.GetTeamSize()), !team.IsValid() ? Str.Unavailable : null, string.Join(", ", mercs.ToArray()));
                 Mercenaries.Item(items, tray, label, () => { Log.Info("mercenaries: edit party " + t.Name); display.RequestContentsToShowTeam(t.ID); });
             }
             var teams = tray.GetTeamsContent();
@@ -187,7 +187,7 @@ namespace HSAEnhanced
             string state;
             bool locked = equipment ? !a.Owned : merc.m_level < a.m_unlockLevel;
             if (locked) state = equipment ? Str.Locked : Str.Game("GLUE_LETTUCE_ABILITY_REACH_LEVEL", a.m_unlockLevel);
-            else state = a.m_tier + "/" + a.GetMaxTier();
+            else state = Str.Of(a.m_tier, a.GetMaxTier());
             bool canUpgrade = !locked && merc.IsCardReadyForUpgrade(a);
             string upgrade = null;
             if (!locked && a.m_tier < a.GetMaxTier())
@@ -235,7 +235,7 @@ namespace HSAEnhanced
         {
             key = "party:" + team.ID;
             var members = team.GetMercs();
-            title = Str.Join(Str.Clean(team.Name), members.Count + "/" + cm.GetTeamSize());
+            title = Str.Join(Str.Clean(team.Name), Str.Of(members.Count, cm.GetTeamSize()));
             var content = tray.GetMercsContent();
             foreach (var merc in members)
             {

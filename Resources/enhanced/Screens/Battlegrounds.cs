@@ -135,7 +135,7 @@ namespace HSAEnhanced
             bool duos = model.BattlegroundsInDuosMode;
             key = "lobby:" + duos;
             title = Str.Join(SceneNames.Of(SceneMgr.Mode.BACON), duos ? Str.Word("GLUE_BACON_INFO_POPUP_DUOS_RULES") : null);
-            Add(items, display, Str.Join(Str.Word("GLUE_BACON_RATING_LABEL"), model.Rating.ToString(), Str.Word("GLUE_BACON_FIRST_PLACE_LABEL"), model.FirstPlaceFinishes.ToString()), null);
+            Add(items, display, Str.Join(Str.Words(Str.Word("GLUE_BACON_RATING_LABEL"), model.Rating.ToString()), Str.Words(Str.Word("GLUE_BACON_FIRST_PLACE_LABEL"), model.FirstPlaceFinishes.ToString())), null);
             var finding = GameMgr.Get() != null && GameMgr.Get().IsFindingGame();
             if (!finding)
                 Add(items, display, Str.Word("GLOBAL_PLAY"), () => { Log.Info("battlegrounds: play"); display.PlayButtonRelease(null); });
@@ -257,7 +257,7 @@ namespace HSAEnhanced
             if (me == null || bob == null || shop == null) return false;
             key = "shop";
             var gold = me.GetNumAvailableResources();
-            title = Str.Join(Str.Word("GLUE_SHOP_GOLD"), gold + "/" + me.GetTag(GAME_TAG.RESOURCES), Str.Word("GAMEPLAY_BACON_TAVERN_TIER"), me.GetTag(GAME_TAG.PLAYER_TECH_LEVEL).ToString());
+            title = Str.Join(Str.Words(Str.Word("GLUE_SHOP_GOLD"), Str.Of(gold, me.GetTag(GAME_TAG.RESOURCES))), Str.Words(Str.Word("GAMEPLAY_BACON_TAVERN_TIER"), me.GetTag(GAME_TAG.PLAYER_TECH_LEVEL).ToString()));
             var anchor = (Component)me.GetHeroCard();
             // Bob's minions: buy
             foreach (var card in bob.GetBattlefieldZone().GetCards())
