@@ -873,6 +873,7 @@ namespace HSAEnhanced
             var tray = Tray;
             key = "deckmenu:" + deck.ID;
             title = Str.Clean(deck.Name);
+            try { title = Str.Join(title, Str.Clean(GameStrings.GetClassName(deck.GetClass()))); } catch { }
             // what is wrong with it, in the game's words
             IList<DeckRuleViolation> violations;
             var rules = CM.GetDeckRuleset();
@@ -922,6 +923,12 @@ namespace HSAEnhanced
             }
             if (deck.GetTotalCardCount() < CM.GetDeckSize())
                 Add(items, display, Str.Word("GLUE_COLLECTION_DECK_COMPELTE_BUTTON"), () => { Log.Info("collection: complete the deck"); tray.CompleteMyDeckButtonPress(); });
+            // a brawl deck: the brawl's Edit button turns into Delete while it is edited (the game asks
+            // first); a new deck then picks its class again
+            var brawl = SceneMgr.Get().GetMode() == SceneMgr.Mode.TAVERN_BRAWL ? TavernBrawlDisplay.Get() : null;
+            if (brawl != null && brawl.IsInDeckEditMode() && brawl.m_editDeckButton != null
+                && brawl.m_editDeckButton.gameObject.activeInHierarchy && brawl.m_editDeckButton.IsEnabled())
+                Add(items, display, Str.Word("GLUE_COLLECTION_DECK_DELETE", "GLOBAL_DELETE"), () => { Log.Info("collection: delete the brawl deck"); Core.Click.Peg(brawl.m_editDeckButton); });
             if (tray.m_doneButton != null)
                 Add(items, display, Str.Word("GLOBAL_BACK"), () => { Log.Info("collection: done"); Core.Click.Peg(tray.m_doneButton); });
             return true;
