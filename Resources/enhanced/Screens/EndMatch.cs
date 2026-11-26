@@ -91,6 +91,75 @@ namespace HSAEnhanced
             try { Rank(); } catch (Exception e) { Log.Error(e); }
             try { CardBack(); } catch (Exception e) { Log.Error(e); }
             try { RankedReward(); } catch (Exception e) { Log.Error(e); }
+            try { Tutorial(); } catch (Exception e) { Log.Error(e); }
+        }
+
+        // ---- the tutorial (new players) -------------------------------------------------------------
+        // After a tutorial match the game takes away its "click to continue" and shows its tutorial
+        // progress screen: the next opponent and a Play button, after the last one a reward chest.
+
+        static TutorialProgressScreen Progress()
+        {
+            var p = TutorialProgressScreen.Get();
+            return p != null && p && p.gameObject.activeInHierarchy ? p : null;
+        }
+
+        static PlayButton TutorialPlay(TutorialProgressScreen p)
+        {
+            var w = Ref.Get<Hearthstone.UI.WidgetInstance>(p, "m_playButton");
+            var b = w == null ? null : w.GetComponentInChildren<PlayButton>();
+            return b != null && b && b.IsEnabled() ? b : null;
+        }
+
+        static Hearthstone.UI.Clickable TutorialChest(TutorialProgressScreen p)
+        {
+            var c = Ref.Get<Hearthstone.UI.Clickable>(p, "m_rewardChestClickable");
+            return c != null && c && c.enabled && c.Active && c.gameObject.activeInHierarchy ? c : null;
+        }
+
+        void Tutorial()
+        {
+            var p = Progress();
+            if (p == null) return;
+            var play = TutorialPlay(p);
+            var chest = play == null ? TutorialChest(p) : null;
+            if (play == null && chest == null) return;
+            var progress = TutorialProgress.NOTHING_COMPLETE;
+            try { progress = NetCache.Get().GetNetObject<NetCache.NetCacheProfileProgress>().CampaignProgress; } catch { }
+            string key = "tutorial " + progress + (chest != null ? " chest" : "");
+            if (m_keys.Contains(key)) return;
+            var lines = new List<string>();
+            switch (progress)
+            {
+                case TutorialProgress.REXXAR_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_DEFEATED_REXXAR)); break;
+                case TutorialProgress.GARROSH_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_DEFEATED_GARROSH)); break;
+                case TutorialProgress.LICH_KING_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_DEFEATED_LICH_KING)); break;
+            }
+            if (play != null)
+            {
+                switch (progress)
+                {
+                    case TutorialProgress.NOTHING_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_NEXT_REXXAR)); break;
+                    case TutorialProgress.REXXAR_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_NEXT_GARROSH)); break;
+                    case TutorialProgress.GARROSH_COMPLETE: lines.Add(Speech.S(K.NEW_TUTORIAL_NEXT_LICH_KING)); break;
+                }
+                lines.Add(Str.Words(Keys.Enter.Name, Str.Word("GLOBAL_PLAY")));
+            }
+            else lines.Add(Speech.S("ACCESSIBILITY_UI_CHEST_REWARD_DISPLAY_HELP", Keys.Enter.Name));
+            EndMatch.Tell(key, lines, "endscreen tutorial");
+            m_at = m_items.Count - 1;
+        }
+
+        // Enter on the tutorial progress screen: its Play button, else its reward chest
+        static bool TutorialEnter()
+        {
+            var p = Progress();
+            if (p == null) return false;
+            var play = TutorialPlay(p);
+            if (play != null) { Log.Info("endscreen: tutorial play"); Core.Click.Peg(play); return true; }
+            var chest = TutorialChest(p);
+            if (chest != null) { Log.Info("endscreen: tutorial reward chest"); Ui.Press(chest); return true; }
+            return true;     // still coming in: nothing to press yet
         }
 
         // the banner (Victory, Defeat...), your hero, its level
@@ -200,6 +269,7 @@ namespace HSAEnhanced
             int n = m_items.Count;
             if (Keys.Enter.Pressed || Keys.Space.Pressed)
             {
+                if (TutorialEnter()) return true;
                 var hit = Screen.m_hitbox;
                 if (hit != null && hit.gameObject.activeInHierarchy) { Log.Info("endscreen: continue"); Core.Click.Peg(hit); }
                 return true;
