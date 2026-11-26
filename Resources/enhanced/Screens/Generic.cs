@@ -30,6 +30,13 @@ namespace HSAEnhanced
 
             var popup = TopPopup();
             if (s_popup != null && (popup == null || s_popup.Root != popup)) { var old = s_popup; s_popup = null; Focus.Pop(old); }
+            // a card that shows up after the popup (a reward scroll's card loads late): read as a
+            // card, not as loose texts (its cost, name, text and stats each an item of their own)
+            if (s_popup != null && !(s_popup is CardsPopupUI) && CardsPopupUI.HasCards(popup))
+            {
+                var old = s_popup; s_popup = null; Focus.Pop(old);
+                Log.Info("popup: its cards came, read as cards");
+            }
             if (popup != null && s_popup == null)
             {
                 if (CardsPopupUI.HasCards(popup))
@@ -238,6 +245,7 @@ namespace HSAEnhanced
             m_texts.Clear();
             var title = PanelUI.PopupTitle(m_root);
             if (!string.IsNullOrEmpty(title)) m_texts.Add(title);
+            foreach (var r in RewardText.ScrollItems(m_root)) if (!m_texts.Contains(r)) m_texts.Add(r);
             foreach (var t in Ui.TextsUnder(m_root))
             {
                 if (InCard(t.Key)) continue;
@@ -399,6 +407,14 @@ namespace HSAEnhanced
                         found.Add(new GameButton { Target = peg, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Peg(peg) });
                     else
                         found.Add(new GameButton { Target = root == null ? null : root.transform, Label = Str.Word("GLOBAL_CONTINUE"), Click = () => Core.Click.Mouse(root) });
+                }
+                // a reward scroll: what it gives first, from its data
+                var rewards = RewardText.ScrollItems(Root);
+                for (int i = rewards.Count - 1; i >= 0; i--)
+                {
+                    var said = rewards[i];
+                    if (labels.Contains(said)) continue;
+                    found.Insert(0, new GameButton { Target = Root.transform, Label = said, Click = () => Say(said) });
                 }
             }
             return found;

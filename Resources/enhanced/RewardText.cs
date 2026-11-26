@@ -162,5 +162,60 @@ namespace HSAEnhanced
             foreach (var l in lines) if (!string.IsNullOrEmpty(l) && !result.Contains(l)) result.Add(l);
             return result;
         }
+
+        // a reward scroll's items, from its data (its pictures can load late, or not at all on the
+        // end screen of a match): "Random Epic card", "25 Gold", "Tome Translator"
+        internal static List<string> ScrollItems(UnityEngine.GameObject root)
+        {
+            var lines = new List<string>();
+            try
+            {
+                var scroll = root == null ? null : root.GetComponentInChildren<Hearthstone.Progression.RewardScroll>(true);
+                var widget = scroll == null ? null : scroll.GetComponent<Hearthstone.UI.WidgetTemplate>();
+                Hearthstone.UI.IDataModel model;
+                if (widget == null || !widget.GetDataModel(257, out model)) return lines;
+                var list = (model as RewardScrollDataModel)?.RewardList;
+                if (list == null || list.Items == null) return lines;
+                foreach (var item in list.Items)
+                {
+                    var line = ScrollItem(item);
+                    if (!string.IsNullOrEmpty(line) && !lines.Contains(line)) lines.Add(line);
+                }
+            }
+            catch (Exception e) { Log.Error(e); }
+            return lines;
+        }
+
+        static string ScrollItem(RewardItemDataModel item)
+        {
+            if (item == null) return null;
+            string count = item.Quantity > 1 ? item.Quantity.ToString() : null;
+            switch (item.ItemType)
+            {
+                case RewardItemType.GOLD: return Str.Words(item.Quantity.ToString(), Str.Word(K.UI_REWARD_TYPE_GOLD));
+                case RewardItemType.DUST: return Str.Words(item.Quantity.ToString(), Str.Word(K.UI_REWARD_TYPE_ARCANE_DUST));
+                case RewardItemType.RANDOM_CARD:
+                    if (item.RandomCard != null)
+                    {
+                        string rarity = null;
+                        try { rarity = Str.Clean(GameStrings.GetRarityText(item.RandomCard.Rarity)); } catch { }
+                        int n = Math.Max(item.RandomCard.Count, item.Quantity);
+                        return Str.Words(n > 1 ? n.ToString() : null, Speech.S("HSA_ENHANCED_RANDOM_CARD", rarity ?? ""));
+                    }
+                    break;
+                case RewardItemType.CARD:
+                    if (item.Card != null)
+                    {
+                        string name = null;
+                        try { var def = DefLoader.Get().GetEntityDef(item.Card.CardId); if (def != null) name = Str.Clean(def.GetName()); } catch { }
+                        if (!string.IsNullOrEmpty(name))
+                            return Str.Words(name, count != null ? "x" + count : null);
+                    }
+                    break;
+            }
+            string named = null;
+            try { named = Str.Clean(RewardUtils.GetName(item, false)); } catch { }
+            return Str.Join(Str.Words(named, count), Str.Clean(item.StandaloneDescription));
+        }
     }
 }

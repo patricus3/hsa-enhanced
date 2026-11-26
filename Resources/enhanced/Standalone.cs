@@ -61,6 +61,20 @@ namespace HSAEnhanced
             try { return EmoteUI.IsOpen; } catch { return false; }
         }
 
+        // start of ChatMgr.HandleGUIInputForQuickChat; true: skipped. The game opens a chat with the
+        // last friend messaged on any Enter, and Enter is ours everywhere: typing then went to that
+        // friend. Messages are sent from the friends list; Escape still closes a chat already open.
+        public static bool StandaloneQuickChat()
+        {
+            try
+            {
+                var chat = ChatMgr.Get();
+                var log = chat == null ? null : Ref.Get<IChatLogUI>(chat, "m_chatLogUI");
+                return log == null || !log.IsShowing;
+            }
+            catch { return true; }
+        }
+
         // start of GameplayErrorManager.DisplayMessage(message): the game's error line, spoken
         public static void StandaloneGameError(string message)
         {

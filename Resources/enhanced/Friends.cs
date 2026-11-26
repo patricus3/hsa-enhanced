@@ -35,6 +35,7 @@ namespace HSAEnhanced
         // every frame
         internal static void Tick()
         {
+            ListenForMessages();
             if (s_ui == null && Showing)
             {
                 s_ui = new FriendsUI();
@@ -43,6 +44,31 @@ namespace HSAEnhanced
                 s_ui.Start();
             }
             if (s_ui != null) s_ui.Tick();
+        }
+
+        // a friend's message is said as it comes ("Message from BrightHammer: gg"); the friends list
+        // keeps the last ones with each friend
+        static bool s_listening;
+
+        static void ListenForMessages()
+        {
+            if (s_listening) return;
+            var mgr = BnetWhisperMgr.Get();
+            if (mgr == null) return;
+            s_listening = mgr.AddWhisperListener(OnMessage) || true;
+        }
+
+        static void OnMessage(BnetWhisper w, object userData)
+        {
+            try
+            {
+                var them = BnetUtils.GetPlayer(WhisperUtil.GetTheirAccountId(w));
+                if (them == null || !WhisperUtil.IsSpeaker(them, w)) return;      // ours: said when sent
+                var text = Str.Clean(ChatUtils.GetMessage(w));
+                Log.Info("friends: message from " + Name(them));
+                Speech.Say(Speech.S("ACCESSIBILITY_UI_SOCIAL_CHAT_MESSAGE_RECEIVED", Name(them), text));
+            }
+            catch (Exception e) { Log.Error(e); }
         }
 
         internal static void Closed(FriendsUI ui) { if (s_ui == ui) s_ui = null; }
