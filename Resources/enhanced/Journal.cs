@@ -236,8 +236,9 @@ namespace HSAEnhanced
                     else if (selectedName == "Achievment") ShowCategories(0);
                     else if (selectedName == "Profile")
                     {
-                        SelectNativeTab(selectedName, selectedTab, tray);
-                        Core.Jobs.Run(ReadNativeJournalPage(label));
+                        try { SelectNativeTab(selectedName, selectedTab, tray); } catch (Exception e) { Log.Error(e); }
+                        ShowProfile(label, 0);
+                        RebuildSoon();     // ratings and Battlegrounds finishes come from the server
                     }
                 });
             }
@@ -332,6 +333,116 @@ namespace HSAEnhanced
         {
             var title = Str.Word("GLUE_PROGRESSION_ACHIEVEMENTS_TITLE", "GLUE_PROGRESSION_ACHIEVEMENTS_TAB_TITLE");
             return string.IsNullOrEmpty(title) ? "Achievements" : title;
+        }
+
+        // The profile, from the game's data (the page the journal shows is drawn from the same):
+        // ranks per format, ranked wins, Arena, Battlegrounds and Mercenaries stats, then every class
+        // with its level, wins and next reward
+        void ShowProfile(string title, int at)
+        {
+            var menu = new Core.Menu(this, title, () => ShowNativeTabs(0));
+            foreach (var line in ProfileLines())
+            {
+                var l = line;
+                menu.AddOption(l, () => Say(l));
+            }
+            menu.AddOption(Journal.Word("GLUE_TOOLTIP_BUTTON_JOURNAL_HEADLINE"), () => ShowNativeTabs(0));
+            Show(menu, at, () => ShowProfile(title, Index));
+            Log.Info("journal: profile, " + (menu.Count - 1) + " lines");
+        }
+
+        static List<string> ProfileLines()
+        {
+            var lines = new List<string>();
+            int rankedWins = 0, arenaWins = 0, bounties = 0;
+            try
+            {
+                var records = NetCache.Get().GetNetObject<NetCache.NetCachePlayerRecords>();
+                if (records != null && records.Records != null)
+                    foreach (var r in records.Records)
+                    {
+                        if (r == null || r.Data != 0) continue;
+                        if (r.RecordType == PegasusShared.GameType.GT_ARENA || r.RecordType == PegasusShared.GameType.GT_UNDERGROUND_ARENA) arenaWins += r.Wins;
+                        else if (r.RecordType == PegasusShared.GameType.GT_RANKED) rankedWins += r.Wins;
+                    }
+            }
+            catch (Exception e) { Log.Error(e); }
+            // ranked: each format's rank, then the wins
+            try
+            {
+                var medals = RankMgr.Get().GetLocalPlayerMedalInfo();
+                foreach (PegasusShared.FormatType f in Enum.GetValues(typeof(PegasusShared.FormatType)))
+                {
+                    if (f == PegasusShared.FormatType.FT_UNKNOWN || !RankMgr.Get().IsFormatAllowedInLeague(f)) continue;
+                    var m = medals == null ? null : medals.GetCurrentMedal(f);
+                    if (m == null) continue;
+                    var name = f.ToString().Replace("FT_", "");
+                    var rank = Str.Clean(m.GetRankName());
+                    if (m.IsLegendRank()) rank = Str.Words(rank, m.legendIndex.ToString());
+                    lines.Add(Str.Join(Str.Words(Str.Word("GLOBAL_RANKED"), Str.Word("GLOBAL_" + name)), rank,
+                        m.IsLegendRank() || m.RankConfig == null ? null : Core.Speech.S("ACCESSIBILITY_UI_RANK_CHANGE_UI_CURRENT_STARS", m.earnedStars, m.RankConfig.Stars)));
+                }
+            }
+            catch (Exception e) { Log.Error(e); }
+            lines.Add(Str.Join(Str.Word("GLOBAL_RANKED"), Str.Game("GLOBAL_PROGRESSION_PROFILE_TOTAL_WINS", rankedWins)));
+            // Arena: the best run, then all wins
+            try
+            {
+                var progress = NetCache.Get().GetNetObject<NetCache.NetCacheProfileProgress>();
+                int best = progress == null ? 0 : progress.BestForgeWins;
+                lines.Add(Str.Join(Str.Word("GLUE_QUEST_LOG_ARENA"), Core.Speech.S("HSA_ENHANCED_PROFILE_BEST", Str.Game("GLOBAL_PROGRESSION_PROFILE_ARENA_WINS", best)),
+                    Str.Game("GLOBAL_PROGRESSION_PROFILE_TOTAL_WINS", arenaWins)));
+            }
+            catch (Exception e) { Log.Error(e); }
+            // Battlegrounds: rating and top 4 finishes
+            try
+            {
+                var bg = NetCache.Get().GetNetObject<NetCache.NetCacheBaconRatingInfo>();
+                long top4 = 0;
+                var save = GameSaveDataManager.Get();
+                if (save != null && save.IsDataReady(GameSaveKeyId.BACON)) save.GetSubkeyValue(GameSaveKeyId.BACON, GameSaveKeySubkeyId.BACON_TOP_4_FINISHES, out top4);
+                lines.Add(Str.Join(Str.Word("GLOBAL_BATTLEGROUNDS"), bg == null ? null : Str.Words(Str.Word("GLUE_BACON_RATING_LABEL"), bg.Rating.ToString()),
+                    Str.Game("GLOBAL_PROGRESSION_PROFILE_BATTLEGROUNDS_TOP4", (int)top4)));
+            }
+            catch (Exception e) { Log.Error(e); }
+            // Mercenaries: PvP rating and bounties cleared
+            try
+            {
+                var merc = NetCache.Get().GetNetObject<NetCache.NetCacheMercenariesPlayerInfo>();
+                if (merc != null)
+                {
+                    foreach (var b in merc.BountyInfoMap) bounties += b.Value.Completions;
+                    lines.Add(Str.Join(Str.Word("GLOBAL_MERCENARIES"), Str.Words(Str.Word("GLUE_PVPDR_RATING_LABEL", "GLUE_BACON_RATING_LABEL"), merc.PvpRating.ToString()),
+                        Str.Game("GLOBAL_PROGRESSION_PROFILE_MERCENARIES_TOTAL_BOUNTIES", bounties)));
+                }
+            }
+            catch (Exception e) { Log.Error(e); }
+            // the classes, in the collection's order
+            try
+            {
+                foreach (var c in CollectionPageManager.CLASS_TAB_ORDER)
+                {
+                    if (c == TAG_CLASS.NEUTRAL) continue;
+                    Hearthstone.DataModels.ProfileClassIconDataModel d = null;
+                    try { d = Hearthstone.Progression.ProfilePageClassProgress.BuildClassIconDataModel(c); } catch (Exception e) { Log.Error(e); }
+                    if (d == null) continue;
+                    var parts = new List<string> { Str.Clean(d.Name) };
+                    if (!d.IsUnlocked) parts.Add(Str.Locked);
+                    else
+                    {
+                        parts.Add(Str.Game("GLOBAL_PROGRESSION_TOOLTIP_CLASS_DEFAULT_DESC", d.CurrentLevel));
+                        parts.Add(Str.Clean(d.WinsText));
+                    }
+                    var tipTitle = Str.Clean(d.TooltipTitle);
+                    var tipDesc = Str.Clean(d.TooltipDesc);
+                    if (tipTitle != parts[0]) parts.Add(tipTitle);
+                    if (!parts.Contains(tipDesc)) parts.Add(tipDesc);
+                    lines.Add(Str.Join(parts.ToArray()));
+                }
+            }
+            catch (Exception e) { Log.Error(e); }
+            lines.RemoveAll(l => string.IsNullOrEmpty(l));
+            return lines;
         }
 
         IEnumerator ReadNativeJournalPage(string title)

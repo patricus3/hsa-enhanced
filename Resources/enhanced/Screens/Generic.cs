@@ -395,6 +395,11 @@ namespace HSAEnhanced
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => Say(text) });
                 }
                 Ui.SortByScreen(found);
+                // the deck styles popup: its OK (and any button on it) closes it the game's way
+                var styles = Dialog() as DeckArchetypesIntroPopup;
+                if (styles != null)
+                    foreach (var b in found)
+                        if (!(b.Target is UberText)) b.Click = () => CloseArchetypes(styles);
                 // nothing to press: a click on the popup usually goes on
                 if (!found.Exists(b => !(b.Target is UberText)))
                 {
@@ -509,10 +514,31 @@ namespace HSAEnhanced
             }
             var dialog = Dialog();
             if (dialog == null) return false;
+            if (dialog is DeckArchetypesIntroPopup) { CloseArchetypes((DeckArchetypesIntroPopup)dialog); return true; }
             var widget = dialog.GetComponent<Hearthstone.UI.Widget>();
             if (widget != null) { Log.Info("popup: dismissed " + dialog.GetType().Name); widget.TriggerEvent("CODE_DISMISS"); }
             if (dialog.IsShown()) { Log.Info("popup: hidden " + dialog.GetType().Name); dialog.Hide(); }
             return true;
+        }
+
+        // The new player's deck styles popup (Aggro: Hunter, Control: Mage) in front of the deck picker:
+        // its OK is the widget's OKAY_CLICKED, whose hide animation then calls Hide(). Its button
+        // press did not reach the widget and CODE_DISMISS is not its event, so it never closed and the
+        // deck picker stayed behind it. The event, then Hide() if it is still there.
+        static void CloseArchetypes(DeckArchetypesIntroPopup popup)
+        {
+            Log.Info("popup: deck styles OK");
+            var widget = popup.GetComponent<Hearthstone.UI.Widget>();
+            try { if (widget != null) widget.TriggerEvent("OKAY_CLICKED"); } catch (Exception e) { Log.Error(e); }
+            Core.Jobs.Run(HideArchetypes(popup));
+        }
+
+        static System.Collections.IEnumerator HideArchetypes(DeckArchetypesIntroPopup popup)
+        {
+            yield return new WaitForSecondsRealtime(1.5f);
+            if (popup == null || !popup || !popup.gameObject.activeInHierarchy) yield break;
+            Log.Info("popup: deck styles hidden");
+            try { popup.Hide(); } catch (Exception e) { Log.Error(e); }
         }
 
         internal override bool HandleKey() { return m_menu != null && m_menu.HandleKey(); }

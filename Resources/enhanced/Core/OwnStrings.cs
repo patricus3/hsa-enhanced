@@ -85,6 +85,7 @@ namespace HSAEnhanced.Core
             { "HSA_ENHANCED_ADVENTURE_CHAPTERS", new[] { "Chapters", "Rozdziały" } },
             { "HSA_ENHANCED_ADVENTURE_NO_MORE_PAGES", new[] { "No more pages", "Nie ma więcej stron" } },
             { "HSA_ENHANCED_N_OF_M", new[] { "{0} of {1}", "{0} z {1}" } },
+            { "HSA_ENHANCED_PROFILE_BEST", new[] { "Best: {0}", "Najlepszy wynik: {0}" } },
             { "HSA_ENHANCED_RANDOM_CARD", new[] { "Random {0} card", "Losowa karta: {0}" } },
             { "HSA_ENHANCED_SHOP_QUANTITY", new[] { "Quantity: {0}", "Ilość: {0}" } },
             { "HSA_ENHANCED_SHOP_QUANTITY_PROMPT", new[] {
