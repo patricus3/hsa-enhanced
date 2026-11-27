@@ -30,8 +30,6 @@ namespace HSAEnhanced
                 if (!Settings.OwnCombat) return false;
                 var gs = GameState.Get();
                 if (gs == null || !gs.IsGameCreated()) return false;
-                var mgr = GameMgr.Get();
-                if (mgr != null && mgr.IsBattlegrounds()) return false;
                 return true;
             }
         }
@@ -115,7 +113,7 @@ namespace HSAEnhanced
                 case Kind.HeroPower: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_HERO_POWER : K.GAMEPLAY_ZONE_OPPONENT_HERO_POWER);
                 case Kind.Weapon: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_WEAPON : K.GAMEPLAY_ZONE_OPPONENT_WEAPON);
                 case Kind.Hand: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_HAND : K.GAMEPLAY_ZONE_OPPONENT_HAND);
-                case Kind.Minions: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_MINIONS : K.GAMEPLAY_ZONE_OPPONENT_MINIONS);
+                case Kind.Minions: return friendly ? L(K.GAMEPLAY_ZONE_PLAYER_MINIONS) : (BgPlay.OpponentMinionsWord(false) ?? L(K.GAMEPLAY_ZONE_OPPONENT_MINIONS));
                 case Kind.Secrets: return L(friendly ? K.GAMEPLAY_ZONE_PLAYER_SECRETS : K.GAMEPLAY_ZONE_OPPONENT_SECRETS);
                 default: return null;      // a hero's first line names it
             }
@@ -171,8 +169,15 @@ namespace HSAEnhanced
         static void FocusZone(object gameplay, Kind kind, bool friendly, string empty, bool force)
         {
             var cards = Cards(kind, friendly);
-            if (cards.Count == 0) { Say(gameplay, L(empty)); return; }
+            if (cards.Count == 0) { Say(gameplay, (kind == Kind.Minions && !friendly ? BgPlay.OpponentMinionsWord(true) : null) ?? L(empty)); return; }
             Focus(gameplay, cards[0], force);
+        }
+
+        // a card the player is taken to (Battlegrounds: the tavern, the hero power), its zone said
+        internal static void FocusCard(object gameplay, Card card)
+        {
+            if (!Enabled || card == null) return;
+            Focus(gameplay, card, true);
         }
         #endregion
 

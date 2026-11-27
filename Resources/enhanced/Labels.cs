@@ -36,7 +36,7 @@ namespace HSAEnhanced
             if (s_backWords == null)
             {
                 var words = new List<string> { "back", "go back", "cancel", "close", "done", "exit", "leave" };
-                foreach (var key in new[] { "GLOBAL_BACK", "GLOBAL_CANCEL", "GLOBAL_CLOSE", "GLOBAL_DONE", "GLOBAL_EXIT", "GLOBAL_LEAVE" })
+                foreach (var key in new[] { "GLOBAL_BACK", "GLOBAL_CANCEL", "GLOBAL_CLOSE", "GLOBAL_BUTTON_CLOSE", "GLOBAL_DONE", "GLOBAL_EXIT", "GLOBAL_LEAVE" })
                 {
                     var s = Str.Game(key);
                     if (!string.IsNullOrEmpty(s)) words.Add(s);

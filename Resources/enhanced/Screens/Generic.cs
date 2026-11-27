@@ -395,11 +395,12 @@ namespace HSAEnhanced
                     found.Add(new GameButton { Target = t.Key, Label = text, Click = () => Say(text) });
                 }
                 Ui.SortByScreen(found);
-                // the deck styles popup: its OK (and any button on it) closes it the game's way
-                var styles = Dialog() as DeckArchetypesIntroPopup;
-                if (styles != null)
+                // a new player's tip popup (deck styles, reward track): its OK (and any button on it)
+                // closes it the game's way
+                var tip = NewPlayerTip(Dialog());
+                if (tip != null)
                     foreach (var b in found)
-                        if (!(b.Target is UberText)) b.Click = () => CloseArchetypes(styles);
+                        if (!(b.Target is UberText)) b.Click = () => CloseTip(tip);
                 // nothing to press: a click on the popup usually goes on
                 if (!found.Exists(b => !(b.Target is UberText)))
                 {
@@ -477,7 +478,7 @@ namespace HSAEnhanced
             }
             // a popup with no Back / Close button of its own on the list (an icon with no text): Close
             if (m_popup && Dialog() != null && !items.Exists(b => Labels.IsBack(b.Label)))
-                menu.AddOption(Str.Word("GLOBAL_CLOSE"), () => TryClose(), "close");
+                menu.AddOption(Str.Word("GLOBAL_BUTTON_CLOSE"), () => TryClose(), "close");
             var k = menu.IndexOfKey(key);
             menu.Index = k >= 0 ? k : at;
             m_menu = menu;
@@ -514,30 +515,43 @@ namespace HSAEnhanced
             }
             var dialog = Dialog();
             if (dialog == null) return false;
-            if (dialog is DeckArchetypesIntroPopup) { CloseArchetypes((DeckArchetypesIntroPopup)dialog); return true; }
+            var tip = NewPlayerTip(dialog);
+            if (tip != null) { CloseTip(tip); return true; }
             var widget = dialog.GetComponent<Hearthstone.UI.Widget>();
             if (widget != null) { Log.Info("popup: dismissed " + dialog.GetType().Name); widget.TriggerEvent("CODE_DISMISS"); }
             if (dialog.IsShown()) { Log.Info("popup: hidden " + dialog.GetType().Name); dialog.Hide(); }
             return true;
         }
 
-        // The new player's deck styles popup (Aggro: Hunter, Control: Mage) in front of the deck picker:
-        // its OK is the widget's OKAY_CLICKED, whose hide animation then calls Hide(). Its button
-        // press did not reach the widget and CODE_DISMISS is not its event, so it never closed and the
-        // deck picker stayed behind it. The event, then Hide() if it is still there.
-        static void CloseArchetypes(DeckArchetypesIntroPopup popup)
+        // The new player's tip popups (NPPG_ prefabs): the deck styles popup in front of the deck
+        // picker (Aggro: Hunter, Control: Mage) and the reward track tip after the second match.
+        // Their OK is a widget event whose hide animation then calls Hide(); their Show() does not
+        // call the base one, so IsShown() is false. The button press did not reach the widget and
+        // CODE_DISMISS is not their event, so they never closed. The OK event, then Hide() if the
+        // popup is still there (Hide() tells the popup manager it is done).
+        static BasicPopup NewPlayerTip(DialogBase dialog)
         {
-            Log.Info("popup: deck styles OK");
-            var widget = popup.GetComponent<Hearthstone.UI.Widget>();
-            try { if (widget != null) widget.TriggerEvent("OKAY_CLICKED"); } catch (Exception e) { Log.Error(e); }
-            Core.Jobs.Run(HideArchetypes(popup));
+            if (dialog is DeckArchetypesIntroPopup || dialog is RewardTrackInfographic) return (BasicPopup)dialog;
+            var popup = dialog as BasicPopup;
+            if (popup == null) return null;
+            for (var t = popup.transform; t != null; t = t.parent)
+                if (t.name.StartsWith("NPPG_")) return popup;
+            return null;
         }
 
-        static System.Collections.IEnumerator HideArchetypes(DeckArchetypesIntroPopup popup)
+        static void CloseTip(BasicPopup popup)
+        {
+            Log.Info("popup: tip OK " + popup.GetType().Name);
+            var widget = popup.GetComponent<Hearthstone.UI.Widget>();
+            try { if (widget != null) widget.TriggerEvent("OKAY_CLICKED"); } catch (Exception e) { Log.Error(e); }
+            Core.Jobs.Run(HideTip(popup));
+        }
+
+        static System.Collections.IEnumerator HideTip(BasicPopup popup)
         {
             yield return new WaitForSecondsRealtime(1.5f);
             if (popup == null || !popup || !popup.gameObject.activeInHierarchy) yield break;
-            Log.Info("popup: deck styles hidden");
+            Log.Info("popup: tip hidden " + popup.GetType().Name);
             try { popup.Hide(); } catch (Exception e) { Log.Error(e); }
         }
 

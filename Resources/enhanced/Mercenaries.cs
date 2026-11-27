@@ -249,7 +249,7 @@ namespace HSAEnhanced
                         });
                     }
                 }
-            Item(items, board, Str.Word("GLOBAL_CLOSE"), () =>
+            Item(items, board, Str.Word("GLOBAL_BUTTON_CLOSE"), () =>
             {
                 Log.Info("mercenaries: close the campfire");
                 var popups = LettuceVillagePopupManager.Get();
@@ -277,7 +277,7 @@ namespace HSAEnhanced
                         Info(items, collection, Campfire.Describe(task));
                     }
                 }
-            Item(items, collection, Str.Word("GLOBAL_CLOSE"), () =>
+            Item(items, collection, Str.Word("GLOBAL_BUTTON_CLOSE"), () =>
             {
                 Log.Info("mercenaries: close the campfire");
                 var popups = LettuceVillagePopupManager.Get();

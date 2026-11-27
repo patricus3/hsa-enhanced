@@ -50,7 +50,7 @@ namespace HSAEnhanced
                 s_startHand = null;
                 s_lastRopeSecond = -1;
             }
-            if (gs == null || !gs.IsGameCreated() || mgr == null || mgr.IsBattlegrounds() || mgr.IsMercenaries()) return;
+            if (gs == null || !gs.IsGameCreated() || mgr == null || mgr.IsBattlegroundsMatchOrTutorial() || mgr.IsMercenaries()) return;
             var me = gs.GetFriendlySidePlayer();
             var them = gs.GetOpposingSidePlayer();
             if (me == null || them == null) return;

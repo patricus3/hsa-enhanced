@@ -33,7 +33,7 @@ namespace HSAEnhanced
             {
                 var gs = GameState.Get();
                 var mgr = GameMgr.Get();
-                if (gs == null || !gs.IsGameCreated() || mgr == null || mgr.IsBattlegrounds() || mgr.IsMercenaries()) return;
+                if (gs == null || !gs.IsGameCreated() || mgr == null || mgr.IsBattlegroundsMatchOrTutorial() || mgr.IsMercenaries()) return;
                 if (s_file == null) s_file = CreateBattleLogPath(gs, mgr);
                 if (s_file != null) File.AppendAllText(s_file, line + Environment.NewLine);
             }

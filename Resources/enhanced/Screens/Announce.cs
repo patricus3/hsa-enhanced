@@ -42,7 +42,7 @@ namespace HSAEnhanced
                 var gs = GameState.Get();
                 if (gs == null || !gs.IsGameCreated()) return false;
                 var mgr = GameMgr.Get();
-                if (mgr != null && (mgr.IsBattlegrounds() || mgr.IsMercenaries())) return false;
+                if (mgr != null && (mgr.IsBattlegroundsMatchOrTutorial() || mgr.IsMercenaries())) return false;
                 return true;
             }
         }

@@ -95,6 +95,11 @@ namespace HSAEnhanced
             var gs = GS;
             if (gs == null) return;
             if (gs.IsGameOver()) { GameOver(); return; }
+            if (BgPlay.Active)
+            {
+                BgPlay.Tick(this);
+                if (gs.IsMulliganPhase()) return;
+            }
 
             var assemble = AssembleUIManager.Get();
             if (assemble != null && Ref.Get<bool>(assemble, "m_isShowingAssembleUI"))
@@ -219,6 +224,7 @@ namespace HSAEnhanced
                 return Combat.StatusKeys(this);
             }
             if (m_mode == Mode.Assemble) return AssembleKeys();
+            if (BgPlay.Active && m_mode != Mode.Choices && m_mode != Mode.Place && BgPlay.HandleKey(this)) return true;
             if (m_mode == Mode.Mulligan) return MulliganKeys();
             // Z: the pet and the board's clickable decorations
             if (Core.Key.Of(KeyCode.Z).Pressed) { BoardObjects.Open(); return true; }
@@ -292,6 +298,7 @@ namespace HSAEnhanced
         {
             var gs = GS;
             if (gs == null) return "";
+            if (BgPlay.Active && m_mode == Mode.Browse && !gs.IsInTargetMode() && !gs.IsGameOver()) return BgPlay.Help();
             if (m_mode == Mode.Assemble)
             {
                 if (m_assembleViewingTarget)
@@ -467,7 +474,7 @@ namespace HSAEnhanced
 
         #region Acting on a card
         // what the game allows for the card now; why not, in the game's words, when nothing
-        void Act(Card card)
+        internal void Act(Card card)
         {
             var gs = GS;
             var e = card.GetEntity();
@@ -727,7 +734,8 @@ namespace HSAEnhanced
             var m = MulliganManager.Get();
             var button = m == null ? null : Ref.Get(m, "mulliganButton") as NormalButton;
             var cards = MulliganCards();
-            return button != null && button.gameObject.activeInHierarchy && cards != null && cards.Count > 0;
+            return button != null && button.gameObject.activeInHierarchy && cards != null && cards.Count > 0
+                && Ref.Get<bool>(m, "m_waitingForUserInput");
         }
 
         // the game's own mark: replaced or kept
