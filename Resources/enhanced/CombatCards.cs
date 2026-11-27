@@ -31,6 +31,8 @@ namespace HSAEnhanced
             }
             catch (Exception ex) { Log.Error(ex); if (lines.Count == 0) lines.Add(Str.Clean(e.GetName())); }
             try { BgPlay.AdjustLines(card, e, lines); } catch (Exception ex) { Log.Error(ex); }
+            // Caricature Artist's (and Battlegrounds' Evil Twin's) mustache, drawn on the minion
+            if (e.HasTag(GAME_TAG.EVIL_TWIN_MUSTACHE) && lines.Count > 0) lines.Insert(1, Speech.S("HSA_ENHANCED_FUNNY_MUSTACHE"));
             // ours: the flavor text last (the game shows it when a card is inspected in the collection)
             try { var def = e.GetEntityDef(); if (def != null && lines.Count > 0) lines.Add(Str.Clean(def.GetFlavorText())); } catch { }
             lines.RemoveAll(l => string.IsNullOrEmpty(l));
